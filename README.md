@@ -18,7 +18,7 @@ This project is not affiliated with *Emporia Energy*.
 - Labels each metric with `account`, `device`, and `channel`
 - Supports multiple Emporia Vue accounts
 - Supports nested devices (sub-panels, smart plugs)
-- Supports human-readable channel names via the config file
+- Auto-discovers channel and device names from the Emporia API
 - Configurable scrape port and collection interval
 - Ready-to-use `docker-compose.yml` that brings up Vueprom + Prometheus + Grafana
 
@@ -156,29 +156,8 @@ mypy vueprom.py
 | `accounts[].name` | Yes | – | Friendly name used as the `account` label |
 | `accounts[].email` | Yes | – | Emporia account email |
 | `accounts[].password` | Yes | – | Emporia account password |
-| `accounts[].devices` | No | – | Optional list of devices for custom channel names |
-| `accounts[].devices[].name` | Yes (if devices) | – | Device name (must match the name in the Emporia app) |
-| `accounts[].devices[].channels` | No | – | List of channel names in circuit order |
 
-### Custom channel names example
-
-```json
-"devices": [
-    {
-        "name": "Main Panel",
-        "channels": [
-            "Air Conditioner",
-            "Furnace",
-            "Washer",
-            "Dryer",
-            "Refrigerator",
-            "Oven",
-            "Dishwasher",
-            "Office"
-        ]
-    }
-]
-```
+> Channel and device names are resolved automatically from the Emporia API. No manual channel configuration is needed.
 
 ---
 
