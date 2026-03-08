@@ -17,7 +17,7 @@
         "name": "account",
         "label": "Account",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
         "query": "label_values(energy_usage_watts, account)",
         "refresh": 2,
         "includeAll": true,
@@ -28,7 +28,7 @@
         "name": "device",
         "label": "Device",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
         "query": "label_values(energy_usage_watts{account=~\"$account\"}, device)",
         "refresh": 2,
         "includeAll": true,
@@ -43,7 +43,7 @@
       "title": "Total Usage by Device (Watts)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "sum by (device) (energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage\"})",
@@ -63,7 +63,7 @@
       "title": "Usage by Channel (Watts)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage\"}",
@@ -83,7 +83,7 @@
       "title": "Current Usage per Channel",
       "type": "bargauge",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "orientation": "horizontal",
         "reduceOptions": { "calcs": ["lastNotNull"] }
@@ -109,16 +109,6 @@
           }
         }
       }
-    }
-  ],
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
-      "description": "",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "pluginName": "Prometheus"
     }
   ],
   "__requires": [
