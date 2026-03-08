@@ -11,7 +11,6 @@ import json
 import logging
 import signal
 import sys
-import time
 import threading
 
 import pyemvue
