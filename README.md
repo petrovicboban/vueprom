@@ -109,6 +109,7 @@ Optional arguments:
 |----------|---------|-------------|
 | `--port` | `8080`  | Prometheus metrics port |
 | `--interval` | `60` | Collection interval in seconds |
+| `--debug` | off | Enable debug logging |
 
 ---
 
@@ -150,6 +151,7 @@ mypy vueprom.py
 |-------|----------|---------|-------------|
 | `port` | No | `8080` | HTTP port for the `/metrics` endpoint |
 | `updateIntervalSecs` | No | `60` | How often to poll the Emporia API |
+| `debug` | No | `false` | Set to `true` to enable debug logging |
 | `accounts` | Yes | – | List of Emporia Vue accounts |
 | `accounts[].name` | Yes | – | Friendly name used as the `account` label |
 | `accounts[].email` | Yes | – | Emporia account email |
