@@ -24,6 +24,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger('vueprom')
 
+
+def enable_debug_mode() -> None:
+    """Switch the root logger and the vueprom logger to DEBUG level."""
+    logging.getLogger().setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
+    logger.debug('Debug mode enabled')
+
+
 # Prometheus metrics
 KWH_TO_WATTS = 60 * 1000  # 1 kWh over 1 minute == 60 * 1000 W
 
@@ -50,6 +58,7 @@ def signal_handler(sig: int, frame: Any) -> None:
 
 def login(account: dict[str, Any]) -> None:
     """Authenticate with the Emporia Vue API and store the session."""
+    logger.debug('Logging into Emporia Vue account: %s', account['name'])
     vue = pyemvue.PyEmVue()
     vue.login(username=account['email'], password=account['password'])
     account['vue'] = vue
@@ -67,11 +76,32 @@ def get_channel_name(account: dict[str, Any], device_name: str, chan: Any) -> st
                 if isinstance(channels, list) and chan_num_str.isdigit():
                     idx = int(chan_num_str) - 1
                     if 0 <= idx < len(channels):
-                        return str(channels[idx])
+                        name = str(channels[idx])
+                        logger.debug(
+                            'Channel name resolved from config list: device=%s chan=%s -> %s',
+                            device_name,
+                            chan_num_str,
+                            name,
+                        )
+                        return name
                 elif isinstance(channels, dict) and chan_num_str in channels:
-                    return str(channels[chan_num_str])
+                    name = str(channels[chan_num_str])
+                    logger.debug(
+                        'Channel name resolved from config dict: device=%s chan=%s -> %s',
+                        device_name,
+                        chan_num_str,
+                        name,
+                    )
+                    return name
                 break
-    return chan.name if chan.name else chan_num_str
+    name = chan.name if chan.name else chan_num_str
+    logger.debug(
+        'Channel name resolved from API: device=%s chan=%s -> %s',
+        device_name,
+        chan_num_str,
+        name,
+    )
+    return name
 
 
 def update_metrics_recursive(
@@ -89,6 +119,7 @@ def update_metrics_recursive(
 
     for gid, device in device_usage_dict.items():
         device_name = device_info[gid].device_name if gid in device_info else str(gid)
+        logger.debug('Processing device: %s (gid=%s)', device_name, gid)
 
         for _chan_num, chan in device.channels.items():
             # Recurse into nested devices (subpanels / smart plugs)
@@ -103,6 +134,13 @@ def update_metrics_recursive(
                         if nested_chan.usage is not None:
                             watts = KWH_TO_WATTS * nested_chan.usage
                             chan_label = get_channel_name(account, nested_name, nested_chan)
+                            logger.debug(
+                                'Setting metric: account=%s device=%s channel=%s watts=%.2f',
+                                account_name,
+                                nested_name,
+                                chan_label,
+                                watts,
+                            )
                             energy_usage_watts.labels(
                                 account=account_name,
                                 device=nested_name,
@@ -113,6 +151,13 @@ def update_metrics_recursive(
             if chan.usage is not None:
                 watts = KWH_TO_WATTS * chan.usage
                 chan_label = get_channel_name(account, device_name, chan)
+                logger.debug(
+                    'Setting metric: account=%s device=%s channel=%s watts=%.2f',
+                    account_name,
+                    device_name,
+                    chan_label,
+                    watts,
+                )
                 energy_usage_watts.labels(
                     account=account_name,
                     device=device_name,
@@ -146,6 +191,9 @@ def collect_usage(account: dict[str, Any]) -> None:
             if device.device_gid not in device_gids:
                 device_gids.append(device.device_gid)
                 device_info[device.device_gid] = device
+                logger.debug(
+                    'Discovered device: %s (gid=%s)', device.device_name, device.device_gid
+                )
             else:
                 # Duplicate device_gid encountered; skip to avoid mutating SDK objects.
                 pass
@@ -200,6 +248,12 @@ def main() -> None:
         default=60,
         help='Collection interval in seconds (default: 60)',
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        default=False,
+        help='Enable debug logging',
+    )
     args = parser.parse_args()
 
     try:
@@ -208,6 +262,9 @@ def main() -> None:
     except (OSError, json.JSONDecodeError) as e:
         logger.error('Failed to load config file %s: %s', args.config, e)
         sys.exit(1)
+
+    if args.debug or config.get('debug', False):
+        enable_debug_mode()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
