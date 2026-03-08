@@ -168,7 +168,12 @@ def collect_usage(account: dict[str, Any]) -> None:
                 pass
             # Also index nested devices so their names are available when building metrics
             if hasattr(device, 'channels') and device.channels:
-                for chan in device.channels.values():
+                channels_iter = (
+                    device.channels.values()
+                    if isinstance(device.channels, dict)
+                    else device.channels
+                )
+                for chan in channels_iter:
                     if chan.nested_devices:
                         for nested_gid, nested_dev in chan.nested_devices.items():
                             if nested_gid not in device_info:
