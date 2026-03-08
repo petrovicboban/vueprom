@@ -106,13 +106,16 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
 
 def collect_usage(account):
     """Collect energy usage from Emporia API and update Prometheus metrics."""
-    if 'vue' not in account:
-        login(account)
-
-    vue = account['vue']
     account_name = account['name']
 
     try:
+        if 'vue' not in account:
+            login(account)
+
+        vue = account.get('vue')
+        if vue is None:
+            logger.error('Vue client not initialized for account %s after login attempt', account_name)
+            return
         devices = vue.get_devices()
         device_gids = []
         device_info = {}
