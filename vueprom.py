@@ -32,6 +32,10 @@ energy_usage_watts = Gauge(
     ['account', 'device', 'channel'],
 )
 
+# Tracks the (device, channel) labelsets last seen per account so stale
+# series can be removed when a device/channel disappears.
+_known_labelsets: dict = {}
+
 running = True
 pause_event = threading.Event()
 
@@ -70,7 +74,13 @@ def get_channel_name(account, device_name, chan):
 
 
 def update_metrics_recursive(account_name, account, device_usage_dict, device_info):
-    """Recursively update Prometheus metrics from a device usage dict."""
+    """Recursively update Prometheus metrics from a device usage dict.
+
+    Returns the set of (device, channel) label tuples that were updated this
+    cycle, so callers can remove any labelsets that are no longer present.
+    """
+    active = set()
+
     for gid, device in device_usage_dict.items():
         device_name = device_info[gid].device_name if gid in device_info else str(gid)
 
@@ -92,6 +102,7 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
                                 device=nested_name,
                                 channel=chan_label,
                             ).set(watts)
+                            active.add((nested_name, chan_label))
 
             if chan.usage is not None:
                 watts = KWH_TO_WATTS * chan.usage
@@ -101,6 +112,9 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
                     device=device_name,
                     channel=chan_label,
                 ).set(watts)
+                active.add((device_name, chan_label))
+
+    return active
 
 
 def collect_usage(account):
@@ -134,7 +148,17 @@ def collect_usage(account):
             unit=Unit.KWH.value,
         )
 
-        update_metrics_recursive(account_name, account, device_usage_dict, device_info)
+        active = update_metrics_recursive(account_name, account, device_usage_dict, device_info)
+
+        # Remove any labelsets that existed in the previous cycle but are gone now
+        stale = _known_labelsets.get(account_name, set()) - active
+        for device, channel in stale:
+            try:
+                energy_usage_watts.remove(account_name, device, channel)
+            except Exception:
+                logger.debug('Could not remove stale labelset account=%s device=%s channel=%s', account_name, device, channel)
+        _known_labelsets[account_name] = active
+
         logger.info('Metrics updated for account: %s', account_name)
 
     except Exception:
