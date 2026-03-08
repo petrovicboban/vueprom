@@ -125,7 +125,8 @@ def collect_usage(account):
                 device_gids.append(device.device_gid)
                 device_info[device.device_gid] = device
             else:
-                device_info[device.device_gid].channels += device.channels
+                # Duplicate device_gid encountered; skip to avoid mutating SDK objects.
+                pass
 
         device_usage_dict = vue.get_device_list_usage(
             deviceGids=device_gids,
