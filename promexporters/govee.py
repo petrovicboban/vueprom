@@ -20,9 +20,9 @@ logger = logging.getLogger('goveeprom')
 GOVEE_API_BASE = 'https://openapi.api.govee.com/router/api/v1'
 
 # Prometheus metrics
-govee_temperature_celsius = Gauge(
-    'govee_temperature_celsius',
-    'Current temperature in Celsius from Govee sensor',
+govee_temperature_fahrenheit = Gauge(
+    'govee_temperature_fahrenheit',
+    'Current temperature in Fahrenheit from Govee sensor',
     ['device', 'device_name', 'sku'],
 )
 
@@ -125,13 +125,15 @@ def collect_metrics(api_key: str) -> None:
                 )
                 continue
 
-            # Detect whether the device is reporting temperature in Fahrenheit.
+            # Detect whether the device is reporting temperature in Celsius.
             # The Govee Router API exposes a `temperatureUnit` capability in the
             # device state: value 0 = Celsius, value 1 = Fahrenheit.
-            temp_unit_fahrenheit = False
+            # We always store in Fahrenheit, so convert only when the device
+            # reports Celsius (temperatureUnit == 0).
+            temp_unit_celsius = False
             for cap in state.get('capabilities', []):
                 if cap.get('instance') == 'temperatureUnit':
-                    temp_unit_fahrenheit = cap.get('state', {}).get('value') == 1
+                    temp_unit_celsius = cap.get('state', {}).get('value') == 0
                     break
 
             for cap in state.get('capabilities', []):
@@ -144,15 +146,15 @@ def collect_metrics(api_key: str) -> None:
 
                 if instance == 'sensorTemperature':
                     value = raw / temp_precision
-                    if temp_unit_fahrenheit:
-                        value = (value - 32.0) * 5.0 / 9.0
-                    govee_temperature_celsius.labels(**labels).set(value)
+                    if temp_unit_celsius:
+                        value = value * 9.0 / 5.0 + 32.0
+                    govee_temperature_fahrenheit.labels(**labels).set(value)
                     logger.debug(
-                        'Temperature: device=%s name=%s value=%.2f°C%s',
+                        'Temperature: device=%s name=%s value=%.2f°F%s',
                         device_id,
                         device_name,
                         value,
-                        ' (converted from °F)' if temp_unit_fahrenheit else '',
+                        ' (converted from °C)' if temp_unit_celsius else '',
                     )
 
                 elif instance == 'sensorHumidity':
