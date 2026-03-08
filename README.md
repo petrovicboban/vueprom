@@ -63,7 +63,15 @@ Edit `vueprom.json`:
 
 > **Important:** Keep `vueprom.json` private – it contains your Emporia credentials in plain text.
 
-### 2. Start the stack
+### 2. Set the Grafana admin password
+
+Create a `.env` file (it is listed in `.gitignore` and will not be committed):
+
+```bash
+echo "GF_SECURITY_ADMIN_PASSWORD=changeme" > .env
+```
+
+### 3. Start the stack
 
 ```bash
 docker compose up -d
@@ -77,7 +85,7 @@ docker compose up -d
 
 ### 3. View the Grafana dashboard
 
-Open http://localhost:3000, log in with `admin` / `admin` (you will be prompted to change the password), then navigate to **Dashboards → Vueprom → Emporia Vue Energy Usage**.
+Open http://localhost:3000, log in with `admin` and the password you set in `.env`, then navigate to **Dashboards → Vueprom → Emporia Vue Energy Usage**.
 
 ---
 
@@ -172,6 +180,19 @@ The included dashboard (`grafana/provisioning/dashboards/energy_dashboard.json`)
 The dashboard is automatically provisioned when using `docker-compose.yml`.
 
 To import it manually into an existing Grafana instance, go to **Dashboards → Import** and upload the JSON file.
+
+---
+
+## Upgrading image versions
+
+`docker-compose.yml` pins Prometheus and Grafana to known-good versions to keep the stack reproducible. To upgrade, edit the image tags in `docker-compose.yml`:
+
+```yaml
+image: prom/prometheus:v3.2.1   # → replace with newer tag
+image: grafana/grafana:11.5.2   # → replace with newer tag
+```
+
+Check the latest tags at [hub.docker.com/r/prom/prometheus/tags](https://hub.docker.com/r/prom/prometheus/tags) and [hub.docker.com/r/grafana/grafana/tags](https://hub.docker.com/r/grafana/grafana/tags).
 
 ---
 
