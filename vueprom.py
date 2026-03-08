@@ -12,10 +12,11 @@ import logging
 import signal
 import sys
 import threading
+from typing import Any
 
 import pyemvue
+from prometheus_client import Gauge, start_http_server
 from pyemvue.enums import Scale, Unit
-from prometheus_client import start_http_server, Gauge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,14 +41,14 @@ running = True
 pause_event = threading.Event()
 
 
-def signal_handler(sig, frame):
+def signal_handler(sig: int, frame: Any) -> None:
     global running
     logger.info('Received signal %s, shutting down...', sig)
     running = False
     pause_event.set()
 
 
-def login(account):
+def login(account: dict[str, Any]) -> None:
     """Authenticate with the Emporia Vue API and store the session."""
     vue = pyemvue.PyEmVue()
     vue.login(username=account['email'], password=account['password'])
@@ -55,7 +56,7 @@ def login(account):
     logger.info('Logged into Emporia Vue account: %s', account['name'])
 
 
-def get_channel_name(account, device_name, chan):
+def get_channel_name(account: dict[str, Any], device_name: str, chan: Any) -> str:
     """Return a human-readable channel name from config or the API default."""
     chan_num = chan.channel_num
     chan_num_str = str(chan_num)
@@ -66,14 +67,19 @@ def get_channel_name(account, device_name, chan):
                 if isinstance(channels, list) and chan_num_str.isdigit():
                     idx = int(chan_num_str) - 1
                     if 0 <= idx < len(channels):
-                        return channels[idx]
+                        return str(channels[idx])
                 elif isinstance(channels, dict) and chan_num_str in channels:
-                    return channels[chan_num_str]
+                    return str(channels[chan_num_str])
                 break
     return chan.name if chan.name else chan_num_str
 
 
-def update_metrics_recursive(account_name, account, device_usage_dict, device_info):
+def update_metrics_recursive(
+    account_name: str,
+    account: dict[str, Any],
+    device_usage_dict: dict[Any, Any],
+    device_info: dict[Any, Any],
+) -> set[tuple[str, str]]:
     """Recursively update Prometheus metrics from a device usage dict.
 
     Returns the set of (device, channel) label tuples that were updated this
@@ -84,7 +90,7 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
     for gid, device in device_usage_dict.items():
         device_name = device_info[gid].device_name if gid in device_info else str(gid)
 
-        for chan_num, chan in device.channels.items():
+        for _chan_num, chan in device.channels.items():
             # Recurse into nested devices (subpanels / smart plugs)
             if chan.nested_devices:
                 for nested_gid, nested_device in chan.nested_devices.items():
@@ -93,7 +99,7 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
                         if hasattr(nested_device, 'device_name')
                         else str(nested_gid)
                     )
-                    for nested_chan_num, nested_chan in nested_device.channels.items():
+                    for _nested_chan_num, nested_chan in nested_device.channels.items():
                         if nested_chan.usage is not None:
                             watts = KWH_TO_WATTS * nested_chan.usage
                             chan_label = get_channel_name(account, nested_name, nested_chan)
@@ -117,7 +123,7 @@ def update_metrics_recursive(account_name, account, device_usage_dict, device_in
     return active
 
 
-def collect_usage(account):
+def collect_usage(account: dict[str, Any]) -> None:
     """Collect energy usage from Emporia API and update Prometheus metrics."""
     account_name = account['name']
 
@@ -127,7 +133,10 @@ def collect_usage(account):
 
         vue = account.get('vue')
         if vue is None:
-            logger.error('Vue client not initialized for account %s after login attempt', account_name)
+            logger.error(
+                'Vue client not initialized for account %s after login attempt',
+                account_name,
+            )
             return
         devices = vue.get_devices()
         device_gids = []
@@ -156,7 +165,12 @@ def collect_usage(account):
             try:
                 energy_usage_watts.remove(account_name, device, channel)
             except Exception:
-                logger.debug('Could not remove stale labelset account=%s device=%s channel=%s', account_name, device, channel)
+                logger.debug(
+                    'Could not remove stale labelset account=%s device=%s channel=%s',
+                    account_name,
+                    device,
+                    channel,
+                )
         _known_labelsets[account_name] = active
 
         logger.info('Metrics updated for account: %s', account_name)
@@ -167,7 +181,7 @@ def collect_usage(account):
         account.pop('vue', None)
 
 
-def main():
+def main() -> None:
     global running
 
     parser = argparse.ArgumentParser(
