@@ -73,7 +73,12 @@ def get_device_state(api_key: str, sku: str, device_id: str) -> dict[str, Any]:
     resp.raise_for_status()
     data: dict[str, Any] = resp.json()
     if data.get('code') != 200:
-        raise RuntimeError(f"Govee API error: {data.get('msg', 'unknown')}")
+        logger.debug(
+            'Govee device state API error response: %s',
+            json.dumps(data, ensure_ascii=False),
+        )
+        error_msg = data.get('msg') or data.get('message') or 'unknown'
+        raise RuntimeError(f'Govee API error: {error_msg}')
     result: dict[str, Any] = data.get('payload', {})
     return result
 
