@@ -38,6 +38,11 @@ govee_battery_percent = Gauge(
     ['device', 'device_name', 'sku'],
 )
 
+# Tracks the (device, device_name, sku) labelsets seen in the previous
+# collection cycle so stale series can be removed when a sensor disappears.
+_known_labelsets: dict[str, set[tuple[str, str, str]]] = {}
+_SENSORS_KEY = 'sensors'
+
 
 def _headers(api_key: str) -> dict[str, str]:
     return {'Govee-API-Key': api_key, 'Content-Type': 'application/json'}
@@ -114,6 +119,8 @@ def collect_metrics(api_key: str) -> None:
         sensor_devices = [d for d in devices if is_sensor_device(d)]
         logger.info('Found %d temperature/humidity Govee sensor(s)', len(sensor_devices))
 
+        active: set[tuple[str, str, str]] = set()
+
         for device in sensor_devices:
             sku = device.get('sku', '')
             device_id = device.get('device', '')
@@ -154,6 +161,7 @@ def collect_metrics(api_key: str) -> None:
                     if temp_unit_celsius:
                         value = value * 9.0 / 5.0 + 32.0
                     govee_temperature_fahrenheit.labels(**labels).set(value)
+                    active.add((device_id, device_name, sku))
                     logger.debug(
                         'Temperature: device=%s name=%s value=%.2f°F%s',
                         device_id,
@@ -165,6 +173,7 @@ def collect_metrics(api_key: str) -> None:
                 elif instance == 'sensorHumidity':
                     value = raw / humi_precision
                     govee_humidity_percent.labels(**labels).set(value)
+                    active.add((device_id, device_name, sku))
                     logger.debug(
                         'Humidity: device=%s name=%s value=%.2f%%',
                         device_id,
@@ -174,12 +183,32 @@ def collect_metrics(api_key: str) -> None:
 
                 elif instance == 'battery':
                     govee_battery_percent.labels(**labels).set(float(raw))
+                    active.add((device_id, device_name, sku))
                     logger.debug(
                         'Battery: device=%s name=%s value=%d%%',
                         device_id,
                         device_name,
                         raw,
                     )
+
+        # Remove labelsets that were present last cycle but are gone now
+        stale = _known_labelsets.get(_SENSORS_KEY, set()) - active
+        for stale_device, stale_name, stale_sku in stale:
+            for gauge in (
+                govee_temperature_fahrenheit,
+                govee_humidity_percent,
+                govee_battery_percent,
+            ):
+                try:
+                    gauge.remove(stale_device, stale_name, stale_sku)
+                except Exception:
+                    logger.debug(
+                        'Could not remove stale labelset device=%s name=%s sku=%s',
+                        stale_device,
+                        stale_name,
+                        stale_sku,
+                    )
+        _known_labelsets[_SENSORS_KEY] = active
 
     except Exception:
         logger.exception('Failed to collect Govee metrics')
