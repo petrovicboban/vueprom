@@ -18,7 +18,7 @@
         "label": "Device",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(govee_temperature_celsius, device_name)",
+        "query": "label_values(govee_temperature_fahrenheit, device_name)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -29,13 +29,13 @@
   "panels": [
     {
       "id": 1,
-      "title": "Temperature (°C)",
+      "title": "Temperature (°F)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "govee_temperature_celsius{device_name=~\"$device_name\"}",
+          "expr": "govee_temperature_fahrenheit{device_name=~\"$device_name\"}",
           "legendFormat": "{{device_name}}",
           "refId": "A"
         }
@@ -71,7 +71,7 @@
     },
     {
       "id": 3,
-      "title": "Current Temperature (°C)",
+      "title": "Current Temperature (°F)",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -83,7 +83,7 @@
       },
       "targets": [
         {
-          "expr": "govee_temperature_celsius{device_name=~\"$device_name\"}",
+          "expr": "govee_temperature_fahrenheit{device_name=~\"$device_name\"}",
           "legendFormat": "{{device_name}}",
           "refId": "A",
           "instant": true
@@ -91,16 +91,16 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "celsius",
-          "min": -10,
-          "max": 50,
+          "unit": "fahrenheit",
+          "min": 20,
+          "max": 130,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "blue", "value": null },
-              { "color": "green", "value": 15 },
-              { "color": "yellow", "value": 28 },
-              { "color": "red", "value": 35 }
+              { "color": "green", "value": 80 },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 110 }
             ]
           }
         }
