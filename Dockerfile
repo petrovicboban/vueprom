@@ -6,12 +6,11 @@ LABEL org.opencontainers.image.title="Vueprom" \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY pyproject.toml README.md ./
 COPY vueprom.py .
+RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 
-ENTRYPOINT ["python", "vueprom.py"]
+ENTRYPOINT ["vueprom"]
 CMD ["vueprom.json"]
