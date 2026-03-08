@@ -65,48 +65,16 @@ def login(account: dict[str, Any]) -> None:
     logger.info('Logged into Emporia Vue account: %s', account['name'])
 
 
-def get_channel_name(account: dict[str, Any], device_name: str, chan: Any) -> str:
-    """Return a human-readable channel name from config or the API default."""
-    chan_num = chan.channel_num
-    chan_num_str = str(chan_num)
-    if 'devices' in account:
-        for dev_config in account['devices']:
-            if dev_config['name'] == device_name:
-                channels = dev_config.get('channels', [])
-                if isinstance(channels, list) and chan_num_str.isdigit():
-                    idx = int(chan_num_str) - 1
-                    if 0 <= idx < len(channels):
-                        name = str(channels[idx])
-                        logger.debug(
-                            'Channel name resolved from config list: device=%s chan=%s -> %s',
-                            device_name,
-                            chan_num_str,
-                            name,
-                        )
-                        return name
-                elif isinstance(channels, dict) and chan_num_str in channels:
-                    name = str(channels[chan_num_str])
-                    logger.debug(
-                        'Channel name resolved from config dict: device=%s chan=%s -> %s',
-                        device_name,
-                        chan_num_str,
-                        name,
-                    )
-                    return name
-                break
+def get_channel_name(chan: Any) -> str:
+    """Return a human-readable channel name from the API."""
+    chan_num_str = str(chan.channel_num)
     name = chan.name if chan.name else chan_num_str
-    logger.debug(
-        'Channel name resolved from API: device=%s chan=%s -> %s',
-        device_name,
-        chan_num_str,
-        name,
-    )
+    logger.debug('Channel name resolved from API: chan=%s -> %s', chan_num_str, name)
     return name
 
 
 def update_metrics_recursive(
     account_name: str,
-    account: dict[str, Any],
     device_usage_dict: dict[Any, Any],
     device_info: dict[Any, Any],
 ) -> set[tuple[str, str]]:
@@ -134,7 +102,7 @@ def update_metrics_recursive(
                     for _nested_chan_num, nested_chan in nested_device.channels.items():
                         if nested_chan.usage is not None:
                             watts = KWH_TO_WATTS * nested_chan.usage
-                            chan_label = get_channel_name(account, nested_name, nested_chan)
+                            chan_label = get_channel_name(nested_chan)
                             logger.debug(
                                 'Setting metric: account=%s device=%s channel=%s watts=%.2f',
                                 account_name,
@@ -151,7 +119,7 @@ def update_metrics_recursive(
 
             if chan.usage is not None:
                 watts = KWH_TO_WATTS * chan.usage
-                chan_label = get_channel_name(account, device_name, chan)
+                chan_label = get_channel_name(chan)
                 logger.debug(
                     'Setting metric: account=%s device=%s channel=%s watts=%.2f',
                     account_name,
@@ -218,7 +186,7 @@ def collect_usage(account: dict[str, Any]) -> None:
             unit=Unit.KWH.value,
         )
 
-        active = update_metrics_recursive(account_name, account, device_usage_dict, device_info)
+        active = update_metrics_recursive(account_name, device_usage_dict, device_info)
 
         # Remove any labelsets that existed in the previous cycle but are gone now
         stale = _known_labelsets.get(account_name, set()) - active
