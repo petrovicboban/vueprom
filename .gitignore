@@ -11,6 +11,7 @@ env/
 
 # Sensitive config (contains credentials)
 vueprom.json
+govee.json
 
 # Grafana/Prometheus runtime data
 grafana_data/

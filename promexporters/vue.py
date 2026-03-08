@@ -1,15 +1,12 @@
-#!/usr/bin/env python3
 """
-Vueprom - Emporia Vue energy monitoring Prometheus exporter.
+Emporia Vue energy monitoring Prometheus exporter.
 
 Fetches energy metrics from the Emporia Vue API and exposes them
-via a Prometheus HTTP endpoint for scraping by Prometheus.
+via Prometheus gauges.
 """
 
-import argparse
 import json
 import logging
-import signal
 import sys
 import threading
 from typing import Any
@@ -18,19 +15,7 @@ import pyemvue
 from prometheus_client import Gauge, start_http_server
 from pyemvue.enums import Scale, Unit
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
-)
 logger = logging.getLogger('vueprom')
-
-
-def enable_debug_mode() -> None:
-    """Switch the root logger and the vueprom logger to DEBUG level."""
-    logging.getLogger().setLevel(logging.DEBUG)
-    logger.setLevel(logging.DEBUG)
-    logger.debug('Debug mode enabled')
-
 
 # Prometheus metrics
 KWH_TO_WATTS = 60 * 1000  # 1 kWh over 1 minute == 60 * 1000 W
@@ -44,16 +29,6 @@ energy_usage_watts = Gauge(
 # Tracks the (device, channel) labelsets last seen per account so stale
 # series can be removed when a device/channel disappears.
 _known_labelsets: dict = {}
-
-running = True
-pause_event = threading.Event()
-
-
-def signal_handler(sig: int, frame: Any) -> None:
-    global running
-    logger.info('Received signal %s, shutting down...', sig)
-    running = False
-    pause_event.set()
 
 
 def login(account: dict[str, Any]) -> None:
@@ -215,64 +190,27 @@ def collect_usage(account: dict[str, Any]) -> None:
         account.pop('vue', None)
 
 
-def main() -> None:
-    global running
-
-    parser = argparse.ArgumentParser(
-        description='Vueprom – Emporia Vue energy monitoring Prometheus exporter',
-    )
-    parser.add_argument('config', help='Path to configuration JSON file')
-    parser.add_argument(
-        '--port',
-        type=int,
-        default=8080,
-        help='Port for Prometheus metrics HTTP endpoint (default: 8080)',
-    )
-    parser.add_argument(
-        '--interval',
-        type=int,
-        default=60,
-        help='Collection interval in seconds (default: 60)',
-    )
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        default=False,
-        help='Enable debug logging',
-    )
-    args = parser.parse_args()
-
-    try:
-        with open(args.config) as f:
-            config = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
-        logger.error('Failed to load config file %s: %s', args.config, e)
-        sys.exit(1)
-
-    if args.debug or config.get('debug', False):
-        enable_debug_mode()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    port = config.get('port', args.port)
-    interval = config.get('updateIntervalSecs', args.interval)
-
+def run(config: dict[str, Any], port: int, interval: int, stop_event: threading.Event) -> None:
+    """Run the Emporia Vue exporter main loop."""
     start_http_server(port)
     logger.info('Prometheus metrics available at http://0.0.0.0:%d/metrics', port)
 
-    while running:
+    while not stop_event.is_set():
         for account in config.get('accounts', []):
-            if not running:
+            if stop_event.is_set():
                 break
             collect_usage(account)
 
-        # Interruptible sleep: wake immediately on shutdown signal
-        pause_event.wait(timeout=interval)
-        pause_event.clear()
+        stop_event.wait(timeout=interval)
 
     logger.info('Vueprom stopped.')
 
 
-if __name__ == '__main__':
-    main()
+def load_config(path: str) -> dict[str, Any]:
+    """Load and return the JSON configuration file."""
+    try:
+        with open(path) as f:
+            return json.load(f)  # type: ignore[no-any-return]
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error('Failed to load config file %s: %s', path, e)
+        sys.exit(1)

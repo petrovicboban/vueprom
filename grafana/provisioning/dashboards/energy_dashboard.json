@@ -8,7 +8,7 @@
   "version": 1,
   "refresh": "1m",
   "time": {
-    "from": "now-3h",
+    "from": "now-24h",
     "to": "now"
   },
   "templating": {
@@ -46,7 +46,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum by (device) (energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage\"})",
+          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel=\"Main\"}",
           "legendFormat": "{{device}}",
           "refId": "A"
         }
@@ -66,7 +66,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage\"}",
+          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage|Main\"}",
           "legendFormat": "{{device}} – {{channel}}",
           "refId": "A"
         }
@@ -90,7 +90,7 @@
       },
       "targets": [
         {
-          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage\"}",
+          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel!~\"Balance|TotalUsage|Main\"}",
           "legendFormat": "{{device}} – {{channel}}",
           "refId": "A",
           "instant": true
