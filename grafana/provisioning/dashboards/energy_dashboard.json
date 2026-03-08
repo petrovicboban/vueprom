@@ -46,7 +46,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum by (device) (energy_usage_watts{account=~\"$account\", device=~\"$device\", channel=\"Main\"})",
+          "expr": "energy_usage_watts{account=~\"$account\", device=~\"$device\", channel=\"Main\"}",
           "legendFormat": "{{device}}",
           "refId": "A"
         }
