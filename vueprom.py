@@ -125,11 +125,12 @@ def update_metrics_recursive(
             # Recurse into nested devices (subpanels / smart plugs)
             if chan.nested_devices:
                 for nested_gid, nested_device in chan.nested_devices.items():
-                    nested_name = (
-                        nested_device.device_name
-                        if hasattr(nested_device, 'device_name')
-                        else str(nested_gid)
-                    )
+                    if nested_gid in device_info and device_info[nested_gid].device_name:
+                        nested_name = device_info[nested_gid].device_name
+                    elif hasattr(nested_device, 'device_name') and nested_device.device_name:
+                        nested_name = nested_device.device_name
+                    else:
+                        nested_name = str(nested_gid)
                     for _nested_chan_num, nested_chan in nested_device.channels.items():
                         if nested_chan.usage is not None:
                             watts = KWH_TO_WATTS * nested_chan.usage
@@ -197,6 +198,18 @@ def collect_usage(account: dict[str, Any]) -> None:
             else:
                 # Duplicate device_gid encountered; skip to avoid mutating SDK objects.
                 pass
+            # Also index nested devices so their names are available when building metrics
+            if hasattr(device, 'channels') and device.channels:
+                for chan in device.channels.values():
+                    if chan.nested_devices:
+                        for nested_gid, nested_dev in chan.nested_devices.items():
+                            if nested_gid not in device_info:
+                                device_info[nested_gid] = nested_dev
+                                logger.debug(
+                                    'Discovered nested device: %s (gid=%s)',
+                                    getattr(nested_dev, 'device_name', str(nested_gid)),
+                                    nested_gid,
+                                )
 
         device_usage_dict = vue.get_device_list_usage(
             deviceGids=device_gids,
