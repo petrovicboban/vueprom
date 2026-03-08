@@ -2,11 +2,23 @@ version: "3.8"
 
 services:
   vueprom:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - ./vueprom.json:/app/vueprom.json:ro
     ports:
       - "8080:8080"
+    restart: unless-stopped
+
+  goveeprom:
+    build:
+      context: .
+      dockerfile: Dockerfile.govee
+    volumes:
+      - ./govee.json:/app/govee.json:ro
+    ports:
+      - "8081:8081"
     restart: unless-stopped
 
   prometheus:
@@ -19,6 +31,7 @@ services:
     restart: unless-stopped
     depends_on:
       - vueprom
+      - goveeprom
 
   grafana:
     image: grafana/grafana:11.5.2

@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+LABEL org.opencontainers.image.title="Goveeprom" \
+      org.opencontainers.image.description="Govee temperature/humidity Prometheus exporter" \
+      org.opencontainers.image.source="https://github.com/petrovicboban/vueprom"
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY promexporters/ promexporters/
+RUN pip install --no-cache-dir .
+
+EXPOSE 8081
+
+ENTRYPOINT ["promexporters", "--exporter", "govee"]
+CMD ["govee.json"]

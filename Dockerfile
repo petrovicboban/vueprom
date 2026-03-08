@@ -7,10 +7,10 @@ LABEL org.opencontainers.image.title="Vueprom" \
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
-COPY vueprom.py .
+COPY promexporters/ promexporters/
 RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 
-ENTRYPOINT ["vueprom"]
+ENTRYPOINT ["promexporters", "--exporter", "vue"]
 CMD ["vueprom.json"]
