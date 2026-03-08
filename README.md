@@ -91,16 +91,16 @@ Open http://localhost:3000, log in with `admin` and the password you set in `.en
 
 ## Running without Docker
 
-### Install dependencies
+### Install
 
 ```bash
-pip install -r requirements.txt
+pip install .
 ```
 
 ### Run
 
 ```bash
-python vueprom.py vueprom.json
+vueprom vueprom.json
 ```
 
 Optional arguments:
@@ -109,6 +109,38 @@ Optional arguments:
 |----------|---------|-------------|
 | `--port` | `8080`  | Prometheus metrics port |
 | `--interval` | `60` | Collection interval in seconds |
+
+---
+
+## Development
+
+### Set up a dev environment
+
+```bash
+git clone https://github.com/petrovicboban/vueprom.git
+cd vueprom
+pip install -e ".[dev]"
+```
+
+This installs the package in editable mode together with the dev tools ([ruff](https://docs.astral.sh/ruff/) and [mypy](https://mypy.readthedocs.io)).
+
+### Lint
+
+```bash
+ruff check vueprom.py
+```
+
+### Format
+
+```bash
+ruff format vueprom.py
+```
+
+### Type-check
+
+```bash
+mypy vueprom.py
+```
 
 ---
 
