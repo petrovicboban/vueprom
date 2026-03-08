@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Sensitive config (contains credentials)
+vueprom.json
+
+# Grafana/Prometheus runtime data
+grafana_data/
+prometheus_data/
