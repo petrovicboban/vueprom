@@ -9,7 +9,7 @@
 | Exporter | Device | Metrics |
 |----------|--------|---------|
 | `vue` | [Emporia Vue](https://emporiaenergy.com) energy monitors | Per-channel energy usage in watts |
-| `govee` | [Govee](https://govee.com) temperature/humidity sensors | Temperature (°C), humidity (%), battery (%) |
+| `govee` | [Govee](https://govee.com) temperature/humidity sensors | Temperature (°F), humidity (%), battery (%) |
 
 Both exporters share a single command-line entry point (`promexporters`) and are differentiated by the `--exporter` flag.
 
@@ -28,7 +28,7 @@ This project is not affiliated with *Emporia Energy* or *Govee*.
 
 ### Govee exporter (`--exporter govee`)
 - Auto-discovers all Govee temperature/humidity sensor devices via the Govee Router API
-- Exports `govee_temperature_celsius`, `govee_humidity_percent`, and `govee_battery_percent` gauges
+- Exports `govee_temperature_fahrenheit`, `govee_humidity_percent`, and `govee_battery_percent` gauges
 - Labels each metric with `device`, `device_name`, and `sku`
 
 ### Common
@@ -121,7 +121,7 @@ docker compose up -d
 
 ### 5. View the Grafana dashboards
 
-Open http://localhost:3000, log in with `admin` and the password you set in `.env`, then navigate to **Dashboards → promexporters** to find:
+Open http://localhost:3000, log in with `admin` and the password you set in `.env`, then navigate to **Dashboards → Vueprom** to find:
 - **Emporia Vue Energy Usage** – energy monitoring dashboard
 - **Govee Temperature & Humidity** – temperature/humidity sensor dashboard
 
@@ -250,7 +250,7 @@ topk(5, energy_usage_watts{channel!~"Balance|TotalUsage"})
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `govee_temperature_celsius` | Gauge | `device`, `device_name`, `sku` | Current temperature in Celsius |
+| `govee_temperature_fahrenheit` | Gauge | `device`, `device_name`, `sku` | Current temperature in Fahrenheit |
 | `govee_humidity_percent` | Gauge | `device`, `device_name`, `sku` | Current relative humidity in percent |
 | `govee_battery_percent` | Gauge | `device`, `device_name`, `sku` | Current battery level in percent |
 
@@ -258,7 +258,7 @@ topk(5, energy_usage_watts{channel!~"Balance|TotalUsage"})
 
 ```promql
 # Temperature of all sensors
-govee_temperature_celsius
+govee_temperature_fahrenheit
 
 # Average humidity across all sensors
 avg(govee_humidity_percent)

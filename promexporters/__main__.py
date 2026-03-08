@@ -13,7 +13,6 @@ import logging
 import signal
 import sys
 import threading
-import types
 from typing import Any
 
 logging.basicConfig(
@@ -76,7 +75,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _make_signal_handler(stop_event))
 
     mod_name = f'promexporters.{args.exporter}'
-    exporter_module: types.ModuleType = importlib.import_module(mod_name)
+    exporter_module: Any = importlib.import_module(mod_name)
 
     config = exporter_module.load_config(args.config)
 

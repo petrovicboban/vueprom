@@ -58,7 +58,8 @@ def get_devices(api_key: str) -> list[dict[str, Any]]:
     resp.raise_for_status()
     data: dict[str, Any] = resp.json()
     if data.get('code') != 200:
-        raise RuntimeError(f"Govee API error: {data.get('message', 'unknown')}")
+        error_msg = data.get('msg') or data.get('message') or 'unknown'
+        raise RuntimeError(f'Govee API error: {error_msg}')
     result: list[dict[str, Any]] = data.get('data', [])
     return result
 
@@ -117,7 +118,7 @@ def collect_metrics(api_key: str) -> None:
     try:
         devices = get_devices(api_key)
         sensor_devices = [d for d in devices if is_sensor_device(d)]
-        logger.info('Found %d temperature/humidity Govee sensor(s)', len(sensor_devices))
+        logger.debug('Found %d temperature/humidity Govee sensor(s)', len(sensor_devices))
 
         active: set[tuple[str, str, str]] = set()
 
@@ -222,7 +223,7 @@ def run(config: dict[str, Any], port: int, interval: int, stop_event: threading.
     api_key: str = config.get('api_key', '')
     if not api_key:
         logger.error('No api_key found in Govee config')
-        return
+        sys.exit(1)
 
     while not stop_event.is_set():
         collect_metrics(api_key)
