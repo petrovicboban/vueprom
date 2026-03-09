@@ -322,11 +322,11 @@ govee_battery_percent < 20
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `airthings_radon_bq_m3` | Gauge | `device`, `device_name`, `device_type`, `location` | Short-term radon level in Bq/m³ |
-| `airthings_radon_longterm_bq_m3` | Gauge | `device`, `device_name`, `device_type`, `location` | Long-term radon level in Bq/m³ |
+| `airthings_radon_pci_l` | Gauge | `device`, `device_name`, `device_type`, `location` | Short-term radon level in pCi/L |
+| `airthings_radon_longterm_pci_l` | Gauge | `device`, `device_name`, `device_type`, `location` | Long-term radon level in pCi/L |
 | `airthings_co2_ppm` | Gauge | `device`, `device_name`, `device_type`, `location` | CO₂ concentration in ppm |
 | `airthings_voc_ppb` | Gauge | `device`, `device_name`, `device_type`, `location` | VOC concentration in ppb |
-| `airthings_temperature_celsius` | Gauge | `device`, `device_name`, `device_type`, `location` | Temperature in °C |
+| `airthings_temperature_fahrenheit` | Gauge | `device`, `device_name`, `device_type`, `location` | Temperature in °F |
 | `airthings_humidity_percent` | Gauge | `device`, `device_name`, `device_type`, `location` | Relative humidity in percent |
 | `airthings_pressure_hpa` | Gauge | `device`, `device_name`, `device_type`, `location` | Atmospheric pressure in hPa |
 | `airthings_pm1_ug_m3` | Gauge | `device`, `device_name`, `device_type`, `location` | PM1 particulate matter in µg/m³ |
