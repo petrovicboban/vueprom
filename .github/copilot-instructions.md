@@ -7,7 +7,7 @@
 | Exporter | Device | Metrics |
 |----------|--------|---------|
 | `vue` | [Emporia Vue](https://emporiaenergy.com) energy monitors | Per-channel energy usage in watts |
-| `govee` | [Govee](https://govee.com) temperature/humidity sensors | Temperature (°C), humidity (%), battery (%) |
+| `govee` | [Govee](https://govee.com) temperature/humidity sensors | Temperature (°F), humidity (%), battery (%) |
 
 Both exporters share a single CLI entry point (`promexporters`) and are selected via the `--exporter` flag.
 
@@ -134,12 +134,12 @@ Stale label-sets (devices/channels that disappear between scrapes) are removed u
 ### Govee exporter
 
 ```
-govee_temperature_celsius{device="...", device_name="...", sku="..."}
+govee_temperature_fahrenheit{device="...", device_name="...", sku="..."}
 govee_humidity_percent{device="...", device_name="...", sku="..."}
 govee_battery_percent{device="...", device_name="...", sku="..."}
 ```
 
-Devices are auto-discovered via the Govee Router API; all sensors reporting temperature or humidity are included automatically.
+Devices are auto-discovered via the Govee Router API; all sensors reporting temperature or humidity are included automatically. Temperature is always stored in Fahrenheit; devices reporting Celsius are converted (×9/5+32) before the metric is set.
 
 ---
 
