@@ -371,11 +371,11 @@ Three dashboards are automatically provisioned when using `docker-compose.yml`:
 - **Battery Level** – bar gauge for all sensors
 
 ### Airthings Air Quality (`grafana/provisioning/dashboards/airthings_dashboard.json`)
-- **Radon – Short-term** – time-series graph (Bq/m³) with WHO threshold colour coding
-- **Radon – Long-term** – time-series graph (Bq/m³)
+- **Radon – Short-term** – time-series graph (pCi/L) with WHO threshold colour coding
+- **Radon – Long-term** – time-series graph (pCi/L)
 - **CO₂** – time-series graph (ppm) with colour thresholds
 - **VOC** – time-series graph (ppb)
-- **Temperature** – time-series graph (°C)
+- **Temperature** – time-series graph (°F)
 - **Humidity** – time-series graph (%)
 - **Pressure** – time-series graph (hPa)
 - **Particulate Matter** – combined PM1 and PM2.5 time-series
