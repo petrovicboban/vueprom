@@ -102,6 +102,11 @@ airthings_rssi_db = Gauge(
     'Wi-Fi/BLE signal strength in dB from Airthings sensor',
     _LABELS,
 )
+airthings_device_info = Gauge(
+    'airthings_device_info',
+    'Airthings device metadata; always 1 for every discovered device',
+    _LABELS,
+)
 
 # Maps sensorType string returned by the API → Prometheus gauge.
 # The API returns sensor readings in sensors[].sensorType as camelCase strings.
@@ -137,10 +142,13 @@ def _convert(sensor_type: str, raw: float) -> float:
 
 
 # All distinct gauge objects (for stale-series cleanup).
-# airthings_battery_percent is not in _SENSOR_TYPE_GAUGES (it comes from the
-# top-level batteryPercentage field), so add it explicitly.
+# airthings_battery_percent and airthings_device_info are not in _SENSOR_TYPE_GAUGES
+# (they come from top-level API fields), so add them explicitly.
 _ALL_GAUGES: list[Gauge] = list(
-    {id(g): g for g in [*_SENSOR_TYPE_GAUGES.values(), airthings_battery_percent]}.values()
+    {
+        id(g): g
+        for g in [*_SENSOR_TYPE_GAUGES.values(), airthings_battery_percent, airthings_device_info]
+    }.values()
 )
 
 # Tracks label-tuples seen in the previous collection cycle
@@ -287,6 +295,18 @@ def collect_metrics(client_id: str, client_secret: str) -> None:
                         'home': str(d.get('home', '')),
                     }
             logger.debug('Account %s: found %d device(s)', account_id, len(device_info))
+
+            # Emit device-info metric for every known device so Grafana template
+            # variables have a reliable, always-present label source.
+            for sn, info in device_info.items():
+                lv = {
+                    'device': sn,
+                    'device_name': info['name'],
+                    'device_type': info['type'],
+                    'location': info['home'],
+                }
+                airthings_device_info.labels(**lv).set(1)
+                active.add((sn, info['name'], info['type'], info['home']))
 
             # Fetch paginated bulk sensor readings
             try:
