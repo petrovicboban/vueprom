@@ -8,6 +8,11 @@ sound, battery, and RSSI readings as Prometheus gauges.
 Authentication uses the OAuth2 client-credentials flow:
   - Token endpoint: https://accounts-api.airthings.com/v1/token
   - API base:       https://consumer-api.airthings.com/v1
+
+API flow (per the OpenAPI spec):
+  1. GET /v1/accounts                          → resolve accountId(s)
+  2. GET /v1/accounts/{accountId}/devices      → device metadata (name, type, home)
+  3. GET /v1/accounts/{accountId}/sensors      → paginated bulk sensor readings
 """
 
 import json
@@ -15,7 +20,7 @@ import logging
 import sys
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from prometheus_client import Gauge, start_http_server
@@ -27,8 +32,8 @@ AIRTHINGS_API_BASE = 'https://consumer-api.airthings.com/v1'
 AIRTHINGS_SCOPE = 'read:device:current_values'
 
 # ---------------------------------------------------------------------------
-# Prometheus metrics – one gauge per sensor field.
-# Labels: device (serial), device_name, device_type, location
+# Prometheus metrics – one gauge per sensor type.
+# Labels: device (serialNumber), device_name, device_type, location (home)
 # ---------------------------------------------------------------------------
 _LABELS = ['device', 'device_name', 'device_type', 'location']
 
@@ -98,26 +103,29 @@ airthings_rssi_db = Gauge(
     _LABELS,
 )
 
-# Maps API field name → gauge
-_FIELD_GAUGES: dict[str, Gauge] = {
-    'radon': airthings_radon_bq_m3,
-    'radonShortTermAvg': airthings_radon_bq_m3,
-    'radonLongTermAvg': airthings_radon_longterm_bq_m3,
-    'co2': airthings_co2_ppm,
-    'voc': airthings_voc_ppb,
-    'humidity': airthings_humidity_percent,
-    'temp': airthings_temperature_celsius,
-    'pressure': airthings_pressure_hpa,
-    'pm1': airthings_pm1_ug_m3,
-    'pm25': airthings_pm25_ug_m3,
-    'light': airthings_light_lux,
-    'sound': airthings_sound_db,
-    'battery': airthings_battery_percent,
-    'rssi': airthings_rssi_db,
+# Maps sensorType string returned by the API → Prometheus gauge.
+# The API returns sensor readings in sensors[].sensorType (uppercase strings).
+_SENSOR_TYPE_GAUGES: dict[str, Gauge] = {
+    'RADON_SHORT_TERM_AVG': airthings_radon_bq_m3,
+    'RADON_LONG_TERM_AVG': airthings_radon_longterm_bq_m3,
+    'CO2': airthings_co2_ppm,
+    'VOC': airthings_voc_ppb,
+    'HUMIDITY': airthings_humidity_percent,
+    'TEMP': airthings_temperature_celsius,
+    'PRESSURE': airthings_pressure_hpa,
+    'PM1': airthings_pm1_ug_m3,
+    'PM25': airthings_pm25_ug_m3,
+    'LIGHT': airthings_light_lux,
+    'SOUND_PRESSURE_LEVELS': airthings_sound_db,
+    'RSSI': airthings_rssi_db,
 }
 
-# All distinct gauge objects (for stale-series cleanup)
-_ALL_GAUGES: list[Gauge] = list({id(g): g for g in _FIELD_GAUGES.values()}.values())
+# All distinct gauge objects (for stale-series cleanup).
+# airthings_battery_percent is not in _SENSOR_TYPE_GAUGES (it comes from the
+# top-level batteryPercentage field), so add it explicitly.
+_ALL_GAUGES: list[Gauge] = list(
+    {id(g): g for g in [*_SENSOR_TYPE_GAUGES.values(), airthings_battery_percent]}.values()
+)
 
 # Tracks label-tuples seen in the previous collection cycle
 _known_labelsets: set[tuple[str, str, str, str]] = set()
@@ -167,10 +175,30 @@ def _auth_headers(token: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def get_devices(token: str) -> list[dict[str, Any]]:
-    """Return the list of all Airthings devices for this account."""
+def get_accounts(token: str) -> list[str]:
+    """Return the list of account IDs the current user belongs to.
+
+    Corresponds to GET /v1/accounts in the OpenAPI spec.
+    """
     resp = requests.get(
-        f'{AIRTHINGS_API_BASE}/devices',
+        f'{AIRTHINGS_API_BASE}/accounts',
+        headers=_auth_headers(token),
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data: dict[str, Any] = resp.json()
+    accounts: list[dict[str, Any]] = data.get('accounts', [])
+    return [str(a['id']) for a in accounts if 'id' in a]
+
+
+def get_devices(token: str, account_id: str) -> list[dict[str, Any]]:
+    """Return device metadata for all devices in an account.
+
+    Corresponds to GET /v1/accounts/{accountId}/devices.
+    Each item has keys: serialNumber, name, type, home, sensors.
+    """
+    resp = requests.get(
+        f'{AIRTHINGS_API_BASE}/accounts/{account_id}/devices',
         headers=_auth_headers(token),
         timeout=30,
     )
@@ -180,17 +208,31 @@ def get_devices(token: str) -> list[dict[str, Any]]:
     return result
 
 
-def get_latest_samples(token: str, serial_number: str) -> dict[str, Any]:
-    """Return the latest sensor readings for a single device."""
-    resp = requests.get(
-        f'{AIRTHINGS_API_BASE}/devices/{serial_number}/latest-samples',
-        headers=_auth_headers(token),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    data: dict[str, Any] = resp.json()
-    result: dict[str, Any] = data.get('data', {})
-    return result
+def get_sensors(token: str, account_id: str) -> list[dict[str, Any]]:
+    """Return all sensor readings for an account, handling pagination.
+
+    Corresponds to GET /v1/accounts/{accountId}/sensors (metric units).
+    Each item is a SensorsResponse:
+      {serialNumber, sensors[{sensorType, value, unit}], recorded, batteryPercentage}
+    """
+    results: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        params: dict[str, str] = {'unit': 'metric', 'pageNumber': str(page)}
+        resp = requests.get(
+            f'{AIRTHINGS_API_BASE}/accounts/{account_id}/sensors',
+            headers=_auth_headers(token),
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        page_results: list[dict[str, Any]] = data.get('results', [])
+        results.extend(page_results)
+        if not data.get('hasNext', False):
+            break
+        page += 1
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -198,71 +240,108 @@ def get_latest_samples(token: str, serial_number: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _location_name(device: dict[str, Any]) -> str:
-    """Extract a human-readable location name from a device dict."""
-    loc: Optional[dict[str, Any]] = device.get('location')
-    if isinstance(loc, dict):
-        name: str = loc.get('name', '')
-        if name:
-            return name
-    return ''
-
-
 def collect_metrics(client_id: str, client_secret: str) -> None:
-    """Collect sensor readings from all discovered Airthings devices."""
+    """Collect sensor readings from all Airthings devices across all accounts."""
     global _known_labelsets
     try:
         token = _get_token(client_id, client_secret)
-        devices = get_devices(token)
-        logger.debug('Found %d Airthings device(s)', len(devices))
+        account_ids = get_accounts(token)
+        if not account_ids:
+            logger.warning('No Airthings accounts found for these credentials')
+            return
+        logger.debug('Found %d Airthings account(s)', len(account_ids))
 
         active: set[tuple[str, str, str, str]] = set()
 
-        for device in devices:
-            serial = str(device.get('id', ''))
-            device_name = str(device.get('productName', serial))
-            device_type = str(device.get('deviceType', ''))
-            location = _location_name(device)
-
-            if not serial:
-                continue
-
+        for account_id in account_ids:
+            # Build a lookup from serialNumber → device metadata
             try:
-                samples = get_latest_samples(token, serial)
+                devices = get_devices(token, account_id)
             except Exception:
-                logger.exception('Failed to fetch samples for device %s (%s)', serial, device_name)
+                logger.exception('Failed to fetch devices for account %s', account_id)
                 continue
 
-            label_values = {
-                'device': serial,
-                'device_name': device_name,
-                'device_type': device_type,
-                'location': location,
-            }
-            label_tuple = (serial, device_name, device_type, location)
+            device_info: dict[str, dict[str, str]] = {}
+            for d in devices:
+                sn = str(d.get('serialNumber', ''))
+                if sn:
+                    device_info[sn] = {
+                        'name': str(d.get('name', sn)),
+                        'type': str(d.get('type', '')),
+                        'home': str(d.get('home', '')),
+                    }
+            logger.debug('Account %s: found %d device(s)', account_id, len(device_info))
 
-            updated = False
-            for field, gauge in _FIELD_GAUGES.items():
-                raw = samples.get(field)
-                if raw is None:
-                    continue
-                try:
-                    value = float(raw)
-                except (TypeError, ValueError):
-                    logger.debug('Non-numeric value for field %s on device %s', field, serial)
-                    continue
-                gauge.labels(**label_values).set(value)
-                updated = True
-                logger.debug(
-                    'device=%s name=%s field=%s value=%s',
-                    serial,
-                    device_name,
-                    field,
-                    value,
-                )
+            # Fetch paginated bulk sensor readings
+            try:
+                sensor_results = get_sensors(token, account_id)
+            except Exception:
+                logger.exception('Failed to fetch sensors for account %s', account_id)
+                continue
 
-            if updated:
-                active.add(label_tuple)
+            for item in sensor_results:
+                serial = str(item.get('serialNumber', ''))
+                if not serial:
+                    continue
+
+                info = device_info.get(serial, {})
+                device_name = info.get('name', serial)
+                device_type = info.get('type', '')
+                location = info.get('home', '')
+
+                label_values = {
+                    'device': serial,
+                    'device_name': device_name,
+                    'device_type': device_type,
+                    'location': location,
+                }
+                label_tuple = (serial, device_name, device_type, location)
+
+                updated = False
+
+                # Individual sensor readings from the sensors[] array
+                for sensor in item.get('sensors', []):
+                    sensor_type = str(sensor.get('sensorType', ''))
+                    gauge = _SENSOR_TYPE_GAUGES.get(sensor_type)
+                    if gauge is None:
+                        logger.debug(
+                            'Unknown sensorType %r for device %s – skipping',
+                            sensor_type,
+                            serial,
+                        )
+                        continue
+                    raw = sensor.get('value')
+                    if raw is None:
+                        continue
+                    try:
+                        value = float(raw)
+                    except (TypeError, ValueError):
+                        logger.debug(
+                            'Non-numeric value for sensorType %s on device %s', sensor_type, serial
+                        )
+                        continue
+                    gauge.labels(**label_values).set(value)
+                    updated = True
+                    logger.debug(
+                        'device=%s name=%s sensorType=%s value=%s',
+                        serial,
+                        device_name,
+                        sensor_type,
+                        value,
+                    )
+
+                # Battery percentage is a top-level field in SensorsResponse
+                battery = item.get('batteryPercentage')
+                if battery is not None:
+                    try:
+                        airthings_battery_percent.labels(**label_values).set(float(battery))
+                        updated = True
+                        logger.debug('device=%s name=%s battery=%s%%', serial, device_name, battery)
+                    except (TypeError, ValueError):
+                        logger.debug('Non-numeric batteryPercentage for device %s', serial)
+
+                if updated:
+                    active.add(label_tuple)
 
         # Remove series for devices that disappeared since the last cycle
         stale = _known_labelsets - active
