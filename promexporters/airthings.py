@@ -104,20 +104,20 @@ airthings_rssi_db = Gauge(
 )
 
 # Maps sensorType string returned by the API → Prometheus gauge.
-# The API returns sensor readings in sensors[].sensorType (uppercase strings).
+# The API returns sensor readings in sensors[].sensorType as camelCase strings.
 _SENSOR_TYPE_GAUGES: dict[str, Gauge] = {
-    'RADON_SHORT_TERM_AVG': airthings_radon_bq_m3,
-    'RADON_LONG_TERM_AVG': airthings_radon_longterm_bq_m3,
-    'CO2': airthings_co2_ppm,
-    'VOC': airthings_voc_ppb,
-    'HUMIDITY': airthings_humidity_percent,
-    'TEMP': airthings_temperature_celsius,
-    'PRESSURE': airthings_pressure_hpa,
-    'PM1': airthings_pm1_ug_m3,
-    'PM25': airthings_pm25_ug_m3,
-    'LIGHT': airthings_light_lux,
-    'SOUND_PRESSURE_LEVELS': airthings_sound_db,
-    'RSSI': airthings_rssi_db,
+    'radonShortTermAvg': airthings_radon_bq_m3,
+    'radonLongTermAvg': airthings_radon_longterm_bq_m3,
+    'co2': airthings_co2_ppm,
+    'voc': airthings_voc_ppb,
+    'humidity': airthings_humidity_percent,
+    'temp': airthings_temperature_celsius,
+    'pressure': airthings_pressure_hpa,
+    'pm1': airthings_pm1_ug_m3,
+    'pm25': airthings_pm25_ug_m3,
+    'light': airthings_light_lux,
+    'soundPressureLevels': airthings_sound_db,
+    'rssi': airthings_rssi_db,
 }
 
 # All distinct gauge objects (for stale-series cleanup).
