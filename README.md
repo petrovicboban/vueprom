@@ -340,13 +340,13 @@ govee_battery_percent < 20
 
 ```promql
 # Radon level for all sensors
-airthings_radon_bq_m3
+airthings_radon_pci_l
 
 # Average CO₂ across all locations
 avg by (location) (airthings_co2_ppm)
 
-# Devices with high radon (above WHO guideline of 100 Bq/m³)
-airthings_radon_bq_m3 > 100
+# Devices with high radon (above WHO guideline of 2.7 pCi/L ≈ 100 Bq/m³)
+airthings_radon_pci_l > 2.7
 
 # Sensors with low battery
 airthings_battery_percent < 20
