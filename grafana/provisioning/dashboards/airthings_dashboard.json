@@ -18,7 +18,7 @@
         "label": "Device",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(airthings_temperature_celsius, device_name)",
+        "query": "label_values(airthings_temperature_fahrenheit, device_name)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -29,7 +29,7 @@
         "label": "Location",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(airthings_temperature_celsius, location)",
+        "query": "label_values(airthings_temperature_fahrenheit, location)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -40,13 +40,13 @@
   "panels": [
     {
       "id": 1,
-      "title": "Radon – Short-term (Bq/m³)",
+      "title": "Radon – Short-term (pCi/L)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "airthings_radon_bq_m3{device_name=~\"$device_name\", location=~\"$location\"}",
+          "expr": "airthings_radon_pci_l{device_name=~\"$device_name\", location=~\"$location\"}",
           "legendFormat": "{{device_name}} ({{location}})",
           "refId": "A"
         }
@@ -61,13 +61,13 @@
     },
     {
       "id": 2,
-      "title": "Radon – Long-term (Bq/m³)",
+      "title": "Radon – Long-term (pCi/L)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "airthings_radon_longterm_bq_m3{device_name=~\"$device_name\", location=~\"$location\"}",
+          "expr": "airthings_radon_longterm_pci_l{device_name=~\"$device_name\", location=~\"$location\"}",
           "legendFormat": "{{device_name}} ({{location}})",
           "refId": "A"
         }
@@ -121,20 +121,20 @@
     },
     {
       "id": 5,
-      "title": "Temperature (°C)",
+      "title": "Temperature (°F)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "airthings_temperature_celsius{device_name=~\"$device_name\", location=~\"$location\"}",
+          "expr": "airthings_temperature_fahrenheit{device_name=~\"$device_name\", location=~\"$location\"}",
           "legendFormat": "{{device_name}} ({{location}})",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "celsius",
+          "unit": "fahrenheit",
           "custom": { "lineWidth": 2 }
         }
       }
@@ -208,7 +208,7 @@
     },
     {
       "id": 9,
-      "title": "Current Radon – Short-term (Bq/m³)",
+      "title": "Current Radon – Short-term (pCi/L)",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -220,7 +220,7 @@
       },
       "targets": [
         {
-          "expr": "airthings_radon_bq_m3{device_name=~\"$device_name\", location=~\"$location\"}",
+          "expr": "airthings_radon_pci_l{device_name=~\"$device_name\", location=~\"$location\"}",
           "legendFormat": "{{device_name}}",
           "refId": "A",
           "instant": true
@@ -230,13 +230,14 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "max": 500,
+          "max": 20,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 100 },
-              { "color": "red", "value": 200 }
+              { "color": "yellow", "value": 2 },
+              { "color": "orange", "value": 4 },
+              { "color": "red", "value": 8 }
             ]
           }
         }

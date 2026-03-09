@@ -37,14 +37,14 @@ AIRTHINGS_SCOPE = 'read:device:current_values'
 # ---------------------------------------------------------------------------
 _LABELS = ['device', 'device_name', 'device_type', 'location']
 
-airthings_radon_bq_m3 = Gauge(
-    'airthings_radon_bq_m3',
-    'Short-term average radon level in Bq/m³ from Airthings sensor',
+airthings_radon_pci_l = Gauge(
+    'airthings_radon_pci_l',
+    'Short-term average radon level in pCi/L from Airthings sensor',
     _LABELS,
 )
-airthings_radon_longterm_bq_m3 = Gauge(
-    'airthings_radon_longterm_bq_m3',
-    'Long-term average radon level in Bq/m³ from Airthings sensor',
+airthings_radon_longterm_pci_l = Gauge(
+    'airthings_radon_longterm_pci_l',
+    'Long-term average radon level in pCi/L from Airthings sensor',
     _LABELS,
 )
 airthings_co2_ppm = Gauge(
@@ -62,9 +62,9 @@ airthings_humidity_percent = Gauge(
     'Relative humidity in percent from Airthings sensor',
     _LABELS,
 )
-airthings_temperature_celsius = Gauge(
-    'airthings_temperature_celsius',
-    'Temperature in degrees Celsius from Airthings sensor',
+airthings_temperature_fahrenheit = Gauge(
+    'airthings_temperature_fahrenheit',
+    'Temperature in degrees Fahrenheit from Airthings sensor',
     _LABELS,
 )
 airthings_pressure_hpa = Gauge(
@@ -106,12 +106,12 @@ airthings_rssi_db = Gauge(
 # Maps sensorType string returned by the API → Prometheus gauge.
 # The API returns sensor readings in sensors[].sensorType as camelCase strings.
 _SENSOR_TYPE_GAUGES: dict[str, Gauge] = {
-    'radonShortTermAvg': airthings_radon_bq_m3,
-    'radonLongTermAvg': airthings_radon_longterm_bq_m3,
+    'radonShortTermAvg': airthings_radon_pci_l,
+    'radonLongTermAvg': airthings_radon_longterm_pci_l,
     'co2': airthings_co2_ppm,
     'voc': airthings_voc_ppb,
     'humidity': airthings_humidity_percent,
-    'temp': airthings_temperature_celsius,
+    'temp': airthings_temperature_fahrenheit,
     'pressure': airthings_pressure_hpa,
     'pm1': airthings_pm1_ug_m3,
     'pm25': airthings_pm25_ug_m3,
@@ -119,6 +119,22 @@ _SENSOR_TYPE_GAUGES: dict[str, Gauge] = {
     'soundPressureLevels': airthings_sound_db,
     'rssi': airthings_rssi_db,
 }
+
+# Conversion factors/functions applied to raw API values before storing.
+# Radon: API delivers Bq/m³; convert to pCi/L  (1 Bq/m³ = 1/37 pCi/L ≈ 0.027027 pCi/L).
+# Temperature: API delivers °C; convert to °F   (F = C × 9/5 + 32).
+# Source: https://www.epa.gov/radon/radon-measurement-concepts
+_BQ_M3_TO_PCI_L = 1.0 / 37.0  # exact: 1 pCi/L = 37 Bq/m³
+
+
+def _convert(sensor_type: str, raw: float) -> float:
+    """Apply unit conversion for sensor types that need it."""
+    if sensor_type in ('radonShortTermAvg', 'radonLongTermAvg'):
+        return raw * _BQ_M3_TO_PCI_L
+    if sensor_type == 'temp':
+        return raw * 9.0 / 5.0 + 32.0
+    return raw
+
 
 # All distinct gauge objects (for stale-series cleanup).
 # airthings_battery_percent is not in _SENSOR_TYPE_GAUGES (it comes from the
@@ -320,7 +336,7 @@ def collect_metrics(client_id: str, client_secret: str) -> None:
                             'Non-numeric value for sensorType %s on device %s', sensor_type, serial
                         )
                         continue
-                    gauge.labels(**label_values).set(value)
+                    gauge.labels(**label_values).set(_convert(sensor_type, value))
                     updated = True
                     logger.debug(
                         'device=%s name=%s sensorType=%s value=%s',
