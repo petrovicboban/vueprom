@@ -1,0 +1,6 @@
+{
+    "port": 8082,
+    "updateIntervalSecs": 60,
+    "client_id": "your-airthings-client-id",
+    "client_secret": "your-airthings-client-secret"
+}

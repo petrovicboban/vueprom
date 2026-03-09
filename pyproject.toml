@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promexporters"
-version = "0.2.0"
-description = "Prometheus exporters for Emporia Vue energy monitoring and Govee temperature/humidity sensors"
+version = "0.3.0"
+description = "Prometheus exporters for Emporia Vue energy monitoring, Govee temperature/humidity sensors, and Airthings air-quality monitors"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
