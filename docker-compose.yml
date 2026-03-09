@@ -21,6 +21,16 @@ services:
       - "8081:8081"
     restart: unless-stopped
 
+  airthingsprom:
+    build:
+      context: .
+      dockerfile: Dockerfile.airthings
+    volumes:
+      - ./airthings.json:/app/airthings.json:ro
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.2.1
     volumes:
@@ -32,6 +42,7 @@ services:
     depends_on:
       - vueprom
       - goveeprom
+      - airthingsprom
 
   grafana:
     image: grafana/grafana:11.5.2

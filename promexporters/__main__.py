@@ -38,15 +38,18 @@ def _make_signal_handler(stop_event: threading.Event) -> Any:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description='promexporters – Prometheus exporters for Emporia Vue and Govee devices',
+        description=(
+            'promexporters – Prometheus exporters for Emporia Vue, Govee, and Airthings devices'
+        ),
     )
     parser.add_argument(
         '--exporter',
-        choices=['vue', 'govee'],
+        choices=['vue', 'govee', 'airthings'],
         default='vue',
         help=(
-            'Which exporter to run: "vue" (Emporia Vue energy) or '
-            '"govee" (Govee temperature/humidity). Default: vue'
+            'Which exporter to run: "vue" (Emporia Vue energy), '
+            '"govee" (Govee temperature/humidity), or '
+            '"airthings" (Airthings air quality). Default: vue'
         ),
     )
     parser.add_argument('config', help='Path to configuration JSON file')

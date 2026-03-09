@@ -12,3 +12,8 @@ scrape_configs:
     static_configs:
       - targets:
           - goveeprom:8081
+
+  - job_name: airthingsprom
+    static_configs:
+      - targets:
+          - airthingsprom:8082
