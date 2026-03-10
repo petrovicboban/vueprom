@@ -11,10 +11,11 @@
 | `vue` | [Emporia Vue](https://emporiaenergy.com) energy monitors | Per-channel energy usage in watts |
 | `govee` | [Govee](https://govee.com) temperature/humidity sensors | Temperature (°F), humidity (%), battery (%) |
 | `airthings` | [Airthings](https://www.airthings.com) air-quality monitors | Radon, CO₂, VOC, temperature, humidity, pressure, PM1, PM2.5, light, sound, battery |
+| `ecobee` | [Ecobee](https://www.ecobee.com) smart thermostats | Indoor temperature (°F), humidity, setpoints, HVAC mode, equipment status, remote sensor readings, outdoor weather |
 
 All exporters share a single command-line entry point (`promexporters`) and are differentiated by the `--exporter` flag.
 
-This project is not affiliated with *Emporia Energy*, *Govee*, or *Airthings*.
+This project is not affiliated with *Emporia Energy*, *Govee*, *Airthings*, or *Ecobee*.
 
 ---
 
@@ -38,6 +39,15 @@ This project is not affiliated with *Emporia Energy*, *Govee*, or *Airthings*.
 - Labels each metric with `device` (serial number), `device_name`, `device_type`, and `location`
 - Uses the OAuth2 client-credentials flow (client ID + secret → bearer token)
 
+### Ecobee exporter (`--exporter ecobee`)
+- Auto-discovers all registered Ecobee thermostats via the Ecobee API
+- Exports indoor temperature, humidity, heat/cool setpoints, HVAC mode, equipment running status,
+  outdoor temperature and humidity (from Ecobee's weather forecast), and per-sensor remote sensor
+  readings (temperature, humidity, occupancy)
+- Labels thermostat metrics with `thermostat` (identifier) and `thermostat_name`
+- Labels sensor metrics with `thermostat`, `thermostat_name`, `sensor` (id), and `sensor_name`
+- Uses the Ecobee PIN OAuth2 flow; the refresh token is saved to the config file automatically
+
 ### Common
 - Configurable scrape port and collection interval
 - Ready-to-use `docker-compose.yml` that brings up both exporters + Prometheus + Grafana
@@ -53,6 +63,7 @@ This project is not affiliated with *Emporia Energy*, *Govee*, or *Airthings*.
 - Emporia Vue account (email + password) for the Vue exporter
 - [Govee API key](https://developer.govee.com/reference/apply-you-govee-api-key) for the Govee exporter
 - [Airthings API client credentials](https://dashboard.airthings.com/integrations/api-integration) for the Airthings exporter
+- [Ecobee developer API key](https://www.ecobee.com/home/developer/api/introduction/index.shtml) for the Ecobee exporter
 
 ---
 
@@ -131,13 +142,52 @@ Create an API client at: https://dashboard.airthings.com/integrations/api-integr
 
 > **Important:** Keep `airthings.json` private – it contains your Airthings API credentials.
 
-### 4. Set the Grafana admin password
+### 4. Configure the Ecobee exporter
+
+Copy the sample config and fill in your Ecobee API key:
+
+```bash
+cp ecobee.json.sample ecobee.json
+```
+
+Edit `ecobee.json`:
+
+```json
+{
+    "port": 8083,
+    "updateIntervalSecs": 180,
+    "api_key": "your-ecobee-api-key",
+    "refresh_token": ""
+}
+```
+
+**How to get an Ecobee API key:**
+
+1. Log in to [developer.ecobee.com](https://www.ecobee.com/home/developer/api/introduction/index.shtml)
+2. Navigate to the **Developer** section and create a new application
+3. Copy the **API Key** (also called Application Key) into `api_key`
+
+**First-run PIN authorization** (required once):
+
+Leave `refresh_token` empty. On first start, the exporter will:
+1. Request a PIN from Ecobee and print it to the log
+2. Print step-by-step instructions to authorize it at ecobee.com
+3. Poll until you complete authorization (the PIN is valid for 9 minutes)
+4. Save the resulting `refresh_token` to `ecobee.json` automatically
+
+On every subsequent start the stored `refresh_token` is used; no manual steps required.
+
+> **Important:** Keep `ecobee.json` private – it contains your Ecobee credentials.
+> The config file must be **writable** so the exporter can save the refresh token;
+> do not mount it read-only (`:ro`) in Docker.
+
+### 5. Set the Grafana admin password
 
 ```bash
 echo "GF_SECURITY_ADMIN_PASSWORD=changeme" > .env
 ```
 
-### 5. Start the stack
+### 6. Start the stack
 
 ```bash
 docker compose up -d
@@ -148,15 +198,17 @@ docker compose up -d
 | Vueprom          | http://localhost:8080/metrics |
 | Goveeprom        | http://localhost:8081/metrics |
 | Airthingsprom    | http://localhost:8082/metrics |
+| Ecobeeprom       | http://localhost:8083/metrics |
 | Prometheus       | http://localhost:9090         |
 | Grafana          | http://localhost:3000         |
 
-### 6. View the Grafana dashboards
+### 7. View the Grafana dashboards
 
 Open http://localhost:3000, log in with `admin` and the password you set in `.env`, then navigate to **Dashboards → Vueprom** to find:
 - **Emporia Vue Energy Usage** – energy monitoring dashboard
 - **Govee Temperature & Humidity** – temperature/humidity sensor dashboard
 - **Airthings Air Quality** – radon, CO₂, VOC, and environmental sensor dashboard
+- **Ecobee Thermostats** – indoor/outdoor temperature, humidity, setpoints, HVAC mode, and sensor dashboard
 
 ---
 
@@ -186,11 +238,17 @@ promexporters --exporter govee govee.json
 promexporters --exporter airthings airthings.json
 ```
 
+### Run the Ecobee exporter
+
+```bash
+promexporters --exporter ecobee ecobee.json
+```
+
 Optional arguments:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--exporter` | `vue` | Which exporter to run: `vue`, `govee`, or `airthings` |
+| `--exporter` | `vue` | Which exporter to run: `vue`, `govee`, `airthings`, or `ecobee` |
 | `--port` | `8080` | Prometheus metrics port |
 | `--interval` | `60` | Collection interval in seconds |
 | `--debug` | off | Enable debug logging |
@@ -198,7 +256,7 @@ Optional arguments:
 You can also run the package directly:
 
 ```bash
-python -m promexporters --exporter airthings airthings.json
+python -m promexporters --exporter ecobee ecobee.json
 ```
 
 ---
@@ -273,6 +331,20 @@ mypy promexporters/
 | `client_secret` | Yes | – | Airthings API client secret |
 
 > Devices are auto-discovered. Create API credentials at https://dashboard.airthings.com/integrations/api-integration.
+
+### Ecobee exporter (`ecobee.json`)
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `port` | No | `8083` | HTTP port for the `/metrics` endpoint |
+| `updateIntervalSecs` | No | `180` | How often to poll the Ecobee API |
+| `debug` | No | `false` | Set to `true` to enable debug logging |
+| `api_key` | Yes | – | Ecobee application API key |
+| `refresh_token` | No | `""` | OAuth2 refresh token (written automatically after PIN auth) |
+
+> Thermostats are auto-discovered. Create an API key at https://www.ecobee.com/home/developer/api/introduction/index.shtml.
+> Leave `refresh_token` empty on first run; the exporter will guide you through PIN authorization
+> and save the token to `ecobee.json` automatically.
 
 ---
 
@@ -352,11 +424,47 @@ airthings_radon_pci_l > 2.7
 airthings_battery_percent < 20
 ```
 
+### Ecobee exporter
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `ecobee_thermostat_info` | Gauge | `thermostat`, `thermostat_name` | Thermostat metadata; always 1 |
+| `ecobee_temperature_fahrenheit` | Gauge | `thermostat`, `thermostat_name` | Indoor temperature in °F |
+| `ecobee_humidity_percent` | Gauge | `thermostat`, `thermostat_name` | Indoor relative humidity in percent |
+| `ecobee_heat_setpoint_fahrenheit` | Gauge | `thermostat`, `thermostat_name` | Heating setpoint in °F |
+| `ecobee_cool_setpoint_fahrenheit` | Gauge | `thermostat`, `thermostat_name` | Cooling setpoint in °F |
+| `ecobee_outdoor_temperature_fahrenheit` | Gauge | `thermostat`, `thermostat_name` | Outdoor temperature in °F (Ecobee weather forecast) |
+| `ecobee_outdoor_humidity_percent` | Gauge | `thermostat`, `thermostat_name` | Outdoor relative humidity in percent |
+| `ecobee_hvac_mode` | Gauge | `thermostat`, `thermostat_name`, `mode` | 1 for the active HVAC mode (`heat`/`cool`/`auto`/`auxHeatOnly`/`off`), 0 for all others |
+| `ecobee_equipment_running` | Gauge | `thermostat`, `thermostat_name`, `equipment` | 1 if the equipment is running, 0 if idle |
+| `ecobee_sensor_temperature_fahrenheit` | Gauge | `thermostat`, `thermostat_name`, `sensor`, `sensor_name` | Temperature in °F from remote sensor |
+| `ecobee_sensor_humidity_percent` | Gauge | `thermostat`, `thermostat_name`, `sensor`, `sensor_name` | Relative humidity in percent from remote sensor |
+| `ecobee_sensor_occupancy` | Gauge | `thermostat`, `thermostat_name`, `sensor`, `sensor_name` | 1 if sensor detects occupancy, 0 otherwise |
+
+#### Example PromQL queries
+
+```promql
+# Current indoor temperature for all thermostats
+ecobee_temperature_fahrenheit
+
+# Difference between indoor and outdoor temperature
+ecobee_temperature_fahrenheit - ecobee_outdoor_temperature_fahrenheit
+
+# Check which HVAC mode is active
+ecobee_hvac_mode == 1
+
+# Which equipment is currently running
+ecobee_equipment_running == 1
+
+# Occupied rooms (remote sensors)
+ecobee_sensor_occupancy == 1
+```
+
 ---
 
 ## Grafana Dashboards
 
-Three dashboards are automatically provisioned when using `docker-compose.yml`:
+Four dashboards are automatically provisioned when using `docker-compose.yml`:
 
 ### Emporia Vue Energy Usage (`grafana/provisioning/dashboards/energy_dashboard.json`)
 - **Total Usage by Device** – time-series graph of watts per device
@@ -383,6 +491,18 @@ Three dashboards are automatically provisioned when using `docker-compose.yml`:
 - **Current CO₂** – gauge panel with indoor air quality thresholds
 - **Battery Level** – bar gauge for all sensors
 
+### Ecobee Thermostats (`grafana/provisioning/dashboards/ecobee_dashboard.json`)
+- **Indoor Temperature** – time-series graph (°F)
+- **Indoor Humidity** – time-series graph (%)
+- **Heat & Cool Setpoints** – combined time-series with heat and cool setpoints
+- **Outdoor Temperature** – time-series from Ecobee's weather forecast
+- **Outdoor Humidity** – time-series from Ecobee's weather forecast
+- **Remote Sensor Temperatures** – time-series for all remote sensors
+- **Current Indoor Temperature** – gauge panel with colour thresholds
+- **Current HVAC Mode** – stat panel showing the active mode
+- **Equipment Running** – bar gauge for all HVAC equipment (running/idle)
+- **Remote Sensor Occupancy** – stat panel showing occupancy per sensor
+
 To import any dashboard manually into an existing Grafana instance, go to **Dashboards → Import** and upload the JSON file.
 
 ---
@@ -403,17 +523,17 @@ Check the latest tags at [hub.docker.com/r/prom/prometheus/tags](https://hub.doc
 ## Architecture
 
 ```
-Emporia Vue Cloud API    Govee Cloud API      Airthings Cloud API
-        │                      │                      │
-        │  (pyemvue,           │  (requests,          │  (requests + OAuth2,
-        │   every N secs)      │   every N secs)      │   every N secs)
-        ▼                      ▼                      ▼
-  promexporters          promexporters          promexporters
-  --exporter vue         --exporter govee       --exporter airthings
-  (vueprom)              (goveeprom)            (airthingsprom)
-        │                      │                      │
-        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics
-        ▼                      ▼                      ▼
+Emporia Vue Cloud API    Govee Cloud API      Airthings Cloud API     Ecobee Cloud API
+        │                      │                      │                      │
+        │  (pyemvue,           │  (requests,          │  (requests + OAuth2, │  (requests + OAuth2,
+        │   every N secs)      │   every N secs)      │   every N secs)      │   every N secs)
+        ▼                      ▼                      ▼                      ▼
+  promexporters          promexporters          promexporters          promexporters
+  --exporter vue         --exporter govee       --exporter airthings   --exporter ecobee
+  (vueprom)              (goveeprom)            (airthingsprom)        (ecobeeprom)
+        │                      │                      │                      │
+        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics
+        ▼                      ▼                      ▼                      ▼
                     Prometheus  ──────────────────▶  Grafana
 ```
 

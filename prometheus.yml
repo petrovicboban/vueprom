@@ -17,3 +17,8 @@ scrape_configs:
     static_configs:
       - targets:
           - airthingsprom:8082
+
+  - job_name: ecobeeprom
+    static_configs:
+      - targets:
+          - ecobeeprom:8083

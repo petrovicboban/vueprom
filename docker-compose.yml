@@ -31,6 +31,17 @@ services:
       - "8082:8082"
     restart: unless-stopped
 
+  ecobeeprom:
+    build:
+      context: .
+      dockerfile: Dockerfile.ecobee
+    volumes:
+      # Mount writable so the exporter can save the refresh_token after PIN auth
+      - ./ecobee.json:/app/ecobee.json
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.2.1
     volumes:
@@ -43,6 +54,7 @@ services:
       - vueprom
       - goveeprom
       - airthingsprom
+      - ecobeeprom
 
   grafana:
     image: grafana/grafana:11.5.2
