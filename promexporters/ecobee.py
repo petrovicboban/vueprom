@@ -147,8 +147,12 @@ def get_thermostats(api_key: str) -> list[dict[str, Any]]:
 
     Calls GET https://api.beestat.io/?api_key=KEY&resource=ecobee_thermostat&method=read_id
 
-    The response is a dict with a ``data`` key containing a list of thermostat
-    objects.  Each object mirrors the Ecobee API structure except:
+    The response is a dict with a ``data`` key containing a **dict** of
+    thermostat objects keyed by their beestat ecobee_thermostat_id, e.g.::
+
+        {"data": {"1": {...thermostat...}, "2": {...thermostat...}}}
+
+    Each thermostat object mirrors the Ecobee API structure except:
       - top-level keys are snake_case (beestat DB column names)
       - ``equipment_status`` is a list of strings, not a comma-separated string
       - ``remote_sensors`` uses the snake_case key name (inner objects keep
@@ -165,7 +169,8 @@ def get_thermostats(api_key: str) -> list[dict[str, Any]]:
     )
     resp.raise_for_status()
     data: dict[str, Any] = resp.json()
-    thermostats: list[dict[str, Any]] = data.get('data', []) or []
+    raw: dict[str, Any] = data.get('data') or {}
+    thermostats: list[dict[str, Any]] = list(raw.values())
     return thermostats
 
 
