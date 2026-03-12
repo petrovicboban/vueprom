@@ -36,8 +36,7 @@ services:
       context: .
       dockerfile: Dockerfile.ecobee
     volumes:
-      # Mount writable so the exporter can save the refresh_token after PIN auth
-      - ./ecobee.json:/app/ecobee.json
+      - ./ecobee.json:/app/ecobee.json:ro
     ports:
       - "8083:8083"
     restart: unless-stopped

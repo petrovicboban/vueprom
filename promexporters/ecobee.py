@@ -1,25 +1,45 @@
 """
-Ecobee thermostat Prometheus exporter.
+Ecobee thermostat Prometheus exporter — via the beestat API.
 
-Discovers all registered Ecobee thermostats and exposes indoor temperature,
-humidity, setpoints, HVAC mode, equipment status, outdoor weather, and remote
-sensor readings as Prometheus gauges.
+Because the official Ecobee developer programme is closed to new
+registrations, this exporter uses the beestat API (https://api.beestat.io/)
+as a read-only proxy to Ecobee thermostat data.  Beestat is a third-party
+analytics service that holds its own Ecobee developer credentials and
+periodically syncs thermostat state on behalf of its users.
 
-Authentication uses the Ecobee PIN OAuth2 flow:
-  1. First run: the exporter requests a PIN, logs instructions for the user to
-     authorize at ecobee.com, polls until authorization succeeds, then saves
-     the refresh token back to the config file automatically.
-  2. Subsequent runs: the stored refresh_token is exchanged for a fresh access
-     token (Ecobee rotates refresh tokens; the new token is saved each time).
+Authentication is simple: provide the ``api_key`` issued to you by beestat.
+There is no OAuth flow, no PIN, and no token rotation — just a static API key.
 
-API base: https://api.ecobee.com/1
+API endpoint used:
+  GET https://api.beestat.io/
+    ?api_key=<KEY>
+    &resource=ecobee_thermostat
+    &method=read_id
+
+The beestat API syncs Ecobee data on its own schedule (roughly every 3
+minutes), so the minimum useful ``updateIntervalSecs`` value is 180.
+
+How to get a beestat API key:
+  1. Sign up / log in at https://beestat.io using your Ecobee account.
+     Beestat handles the Ecobee OAuth for you.
+  2. Request an API key via the beestat API request form or by contacting
+     the beestat author via https://beestat.io.
+
+Data-mapping notes (beestat vs. raw Ecobee API):
+  • Top-level field names are snake_case (beestat DB columns) instead of
+    camelCase (Ecobee API).
+  • ``runtime``, ``settings``, and ``weather`` values are stored verbatim
+    from the Ecobee API and therefore keep their camelCase inner keys.
+  • ``equipment_status`` is a JSON *list* of strings (e.g. ["heatPump"]),
+    whereas the Ecobee API returns a comma-separated string.
+  • ``remote_sensors`` is a JSON list; inner keys are the Ecobee camelCase
+    names (``id``, ``name``, ``capability``, …).
 """
 
 import json
 import logging
 import sys
 import threading
-import time
 from typing import Any
 
 import requests
@@ -27,21 +47,13 @@ from prometheus_client import Gauge, start_http_server
 
 logger = logging.getLogger('ecobeeprom')
 
-ECOBEE_AUTHORIZE_URL = 'https://api.ecobee.com/authorize'
-ECOBEE_TOKEN_URL = 'https://api.ecobee.com/token'
-ECOBEE_API_BASE = 'https://api.ecobee.com/1'
+BEESTAT_API_URL = 'https://api.beestat.io/'
 
 # Ecobee encodes "sensor unavailable" as 12300 (tenths of °F)
 _ECOBEE_TEMP_UNAVAILABLE = 12300
 
-# All HVAC modes the Ecobee API can report
+# All HVAC modes the Ecobee / beestat API can report
 _KNOWN_HVAC_MODES = ('heat', 'cool', 'auto', 'auxHeatOnly', 'off')
-
-# Seconds before expiry to request a new token (safety buffer)
-_TOKEN_EXPIRY_BUFFER_SECS = 60
-
-# Maximum PIN polling interval in seconds (caps exponential back-off)
-_MAX_POLL_INTERVAL_SECS = 120
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
@@ -124,216 +136,37 @@ _known_mode_labelsets: set[tuple[str, str, str]] = set()
 _known_equipment_labelsets: set[tuple[str, str, str]] = set()
 _known_sensor_labelsets: set[tuple[str, str, str, str]] = set()
 
-# ---------------------------------------------------------------------------
-# Access-token cache
-# ---------------------------------------------------------------------------
-
-_token_cache: dict[str, Any] = {}
-
 
 # ---------------------------------------------------------------------------
-# Token / auth helpers
+# Beestat API helper
 # ---------------------------------------------------------------------------
 
 
-def _authorize_pin(api_key: str) -> tuple[str, str, int, int]:
-    """Request a PIN from the Ecobee authorize endpoint.
+def get_thermostats(api_key: str) -> list[dict[str, Any]]:
+    """Return all Ecobee thermostats for the beestat account associated with api_key.
 
-    Returns (pin, auth_code, poll_interval_secs, expires_in_mins).
+    Calls GET https://api.beestat.io/?api_key=KEY&resource=ecobee_thermostat&method=read_id
+
+    The response is a dict with a ``data`` key containing a list of thermostat
+    objects.  Each object mirrors the Ecobee API structure except:
+      - top-level keys are snake_case (beestat DB column names)
+      - ``equipment_status`` is a list of strings, not a comma-separated string
+      - ``remote_sensors`` uses the snake_case key name (inner objects keep
+        Ecobee camelCase keys)
     """
     resp = requests.get(
-        ECOBEE_AUTHORIZE_URL,
+        BEESTAT_API_URL,
         params={
-            'response_type': 'ecobeePin',
-            'client_id': api_key,
-            'scope': 'smartRead',
+            'api_key': api_key,
+            'resource': 'ecobee_thermostat',
+            'method': 'read_id',
         },
         timeout=30,
     )
     resp.raise_for_status()
     data: dict[str, Any] = resp.json()
-    pin: str = str(data['ecobeePin'])
-    code: str = str(data['code'])
-    interval: int = int(data.get('interval', 30))
-    expires_in_mins: int = int(data.get('expires_in', 9))
-    return pin, code, interval, expires_in_mins
-
-
-def _request_tokens_pin(api_key: str, auth_code: str) -> dict[str, Any]:
-    """Exchange a PIN auth code for access + refresh tokens."""
-    resp = requests.post(
-        ECOBEE_TOKEN_URL,
-        params={
-            'grant_type': 'ecobeePin',
-            'code': auth_code,
-            'client_id': api_key,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    result: dict[str, Any] = resp.json()
-    return result
-
-
-def _request_tokens_refresh(api_key: str, refresh_token: str) -> dict[str, Any]:
-    """Exchange a refresh token for new access + refresh tokens."""
-    resp = requests.post(
-        ECOBEE_TOKEN_URL,
-        params={
-            'grant_type': 'refresh_token',
-            'code': refresh_token,
-            'client_id': api_key,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    result: dict[str, Any] = resp.json()
-    return result
-
-
-def _save_refresh_token(token: str, config: dict[str, Any]) -> None:
-    """Persist the refresh token back to the config file on disk."""
-    config_path: str = config.get('_config_path', '')
-    if not config_path:
-        logger.warning('Cannot persist refresh token: config path unknown')
-        return
-    config['refresh_token'] = token
-    # Strip internal keys before writing
-    saved = {k: v for k, v in config.items() if not k.startswith('_')}
-    try:
-        with open(config_path, 'w') as fh:
-            json.dump(saved, fh, indent=4)
-        logger.info('Refresh token saved to %s', config_path)
-    except OSError as exc:
-        logger.error('Failed to save refresh token to %s: %s', config_path, exc)
-
-
-def _update_token_cache(data: dict[str, Any]) -> str:
-    """Store a new access token in the module-level cache and return it."""
-    access_token: str = str(data['access_token'])
-    expires_in: int = int(data.get('expires_in', 3600))
-    _token_cache['access_token'] = access_token
-    _token_cache['expires_at'] = time.time() + expires_in - _TOKEN_EXPIRY_BUFFER_SECS
-    return access_token
-
-
-def _get_token(api_key: str, config: dict[str, Any]) -> str:
-    """Return a valid access token, refreshing via the refresh token if needed."""
-    if _token_cache.get('access_token') and time.time() < float(_token_cache.get('expires_at', 0)):
-        return str(_token_cache['access_token'])
-
-    refresh_token: str = config.get('refresh_token', '')
-    if not refresh_token:
-        raise RuntimeError('No refresh token in config; PIN authorization is required')
-
-    data = _request_tokens_refresh(api_key, refresh_token)
-    access_token = _update_token_cache(data)
-    new_refresh: str = str(data.get('refresh_token', refresh_token))
-    if new_refresh != refresh_token:
-        # Ecobee rotates refresh tokens on every use
-        _save_refresh_token(new_refresh, config)
-    logger.debug(
-        'Refreshed Ecobee access token (expires in %ds)', int(data.get('expires_in', 3600))
-    )
-    return access_token
-
-
-# ---------------------------------------------------------------------------
-# PIN authorization flow (first-time / re-authorization)
-# ---------------------------------------------------------------------------
-
-
-def _do_pin_flow(api_key: str, config: dict[str, Any], stop_event: threading.Event) -> bool:
-    """
-    Run the interactive PIN authorization flow.
-
-    Logs the PIN for the user to enter at ecobee.com, then polls the token
-    endpoint until authorization succeeds, the PIN expires, or stop_event fires.
-    Returns True on success, False on failure or cancellation.
-    """
-    try:
-        pin, auth_code, poll_interval, expires_in_mins = _authorize_pin(api_key)
-    except Exception:
-        logger.exception('Failed to request Ecobee PIN')
-        return False
-
-    logger.info('=' * 60)
-    logger.info('ACTION REQUIRED - Ecobee PIN authorization')
-    logger.info('  1. Log in to https://www.ecobee.com')
-    logger.info('  2. Click the person icon in the top-right corner')
-    logger.info('  3. Navigate to My Apps')
-    logger.info('  4. Click "Add Application"')
-    logger.info('  5. Enter the PIN: %s', pin)
-    logger.info('  (PIN expires in %d minutes)', expires_in_mins)
-    logger.info('=' * 60)
-
-    deadline = time.time() + expires_in_mins * 60
-    while time.time() < deadline:
-        if stop_event.wait(timeout=float(poll_interval)):
-            logger.info('Stop requested during PIN authorization')
-            return False
-        try:
-            data = _request_tokens_pin(api_key, auth_code)
-            _update_token_cache(data)
-            new_refresh: str = str(data['refresh_token'])
-            _save_refresh_token(new_refresh, config)
-            logger.info('Ecobee authorization successful!')
-            return True
-        except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 400:
-                try:
-                    body: dict[str, Any] = exc.response.json()
-                except ValueError:
-                    body = {}
-                error: str = str(body.get('error', ''))
-                if error == 'authorization_pending':
-                    logger.debug('Waiting for user to authorize PIN...')
-                    continue
-                if error == 'authorization_expired':
-                    logger.error('Ecobee PIN expired. Restart the exporter to obtain a new PIN.')
-                    return False
-                if error == 'slow_down':
-                    poll_interval = min(poll_interval * 2, _MAX_POLL_INTERVAL_SECS)
-                    logger.debug('Ecobee requests slower polling; new interval=%ds', poll_interval)
-                    continue
-            logger.exception('Unexpected error during Ecobee PIN authorization')
-            return False
-
-    logger.error('Ecobee PIN authorization timed out. Restart the exporter to get a new PIN.')
-    return False
-
-
-# ---------------------------------------------------------------------------
-# API helper
-# ---------------------------------------------------------------------------
-
-
-def get_thermostats(token: str) -> list[dict[str, Any]]:
-    """Return all registered thermostats with runtime, settings, weather, sensors."""
-    selection = {
-        'selection': {
-            'selectionType': 'registered',
-            'selectionMatch': '',
-            'includeRuntime': True,
-            'includeSettings': True,
-            'includeWeather': True,
-            'includeEquipmentStatus': True,
-            'includeSensors': True,
-        }
-    }
-    resp = requests.get(
-        f'{ECOBEE_API_BASE}/thermostat',
-        headers={
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-        },
-        params={'json': json.dumps(selection)},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    data: dict[str, Any] = resp.json()
-    result: list[dict[str, Any]] = data.get('thermostatList', [])
-    return result
+    thermostats: list[dict[str, Any]] = data.get('data', []) or []
+    return thermostats
 
 
 # ---------------------------------------------------------------------------
@@ -341,15 +174,14 @@ def get_thermostats(token: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
-    """Collect readings from all registered Ecobee thermostats."""
+def collect_metrics(api_key: str) -> None:
+    """Collect readings from all Ecobee thermostats via the beestat API."""
     global _known_thermostat_labelsets, _known_mode_labelsets
     global _known_equipment_labelsets, _known_sensor_labelsets
 
     try:
-        token = _get_token(api_key, config)
-        thermostats = get_thermostats(token)
-        logger.debug('Found %d Ecobee thermostat(s)', len(thermostats))
+        thermostats = get_thermostats(api_key)
+        logger.debug('Found %d Ecobee thermostat(s) via beestat', len(thermostats))
 
         active_thermostats: set[tuple[str, str]] = set()
         active_modes: set[tuple[str, str, str]] = set()
@@ -369,6 +201,7 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
             active_thermostats.add(t_tuple)
 
             # --- Runtime (indoor conditions + setpoints) ---
+            # beestat stores the raw Ecobee runtime JSON; inner keys are camelCase
             runtime: dict[str, Any] = t.get('runtime') or {}
 
             actual_temp = runtime.get('actualTemperature')
@@ -390,6 +223,7 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
                 ecobee_cool_setpoint_fahrenheit.labels(**t_labels).set(float(desired_cool) / 10.0)
 
             # --- HVAC mode (emit all known modes; 1 = current, 0 = others) ---
+            # beestat stores the raw Ecobee settings JSON; inner keys are camelCase
             settings: dict[str, Any] = t.get('settings') or {}
             current_mode = str(settings.get('hvacMode', 'off'))
             for mode in _KNOWN_HVAC_MODES:
@@ -399,7 +233,8 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
                 active_modes.add(m_tuple)
             logger.debug('thermostat=%s hvacMode=%s', t_id, current_mode)
 
-            # --- Weather (outdoor conditions from Ecobee's weather forecast) ---
+            # --- Weather (outdoor conditions) ---
+            # beestat stores the raw Ecobee weather JSON; inner keys are camelCase
             weather: dict[str, Any] = t.get('weather') or {}
             forecasts: list[dict[str, Any]] = weather.get('forecasts') or []
             if forecasts:
@@ -414,11 +249,11 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
                     ecobee_outdoor_humidity_percent.labels(**t_labels).set(float(outdoor_hum))
 
             # --- Equipment running status ---
-            equip_status_str: str = str(t.get('equipmentStatus') or '')
+            # beestat converts the Ecobee comma-string into a JSON list, e.g.
+            # Ecobee: "heatPump,fan"  →  beestat: ["heatPump", "fan"]
+            equip_raw = t.get('equipment_status')
             running_equip: set[str] = (
-                {e.strip() for e in equip_status_str.split(',') if e.strip()}
-                if equip_status_str.strip()
-                else set()
+                {str(e) for e in equip_raw if e} if isinstance(equip_raw, list) else set()
             )
             # Union of currently running + previously tracked equipment for this thermostat
             prev_equip = {
@@ -437,7 +272,8 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
                 logger.debug('thermostat=%s running=%s', t_id, ','.join(sorted(running_equip)))
 
             # --- Remote sensors (includes the thermostat body sensor itself) ---
-            remote_sensors: list[dict[str, Any]] = t.get('remoteSensors') or []
+            # beestat stores the raw Ecobee remoteSensors list; inner keys are camelCase
+            remote_sensors: list[dict[str, Any]] = t.get('remote_sensors') or []
             for sensor in remote_sensors:
                 s_id = str(sensor.get('id', ''))
                 s_name = str(sensor.get('name', s_id))
@@ -530,7 +366,7 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
         _known_sensor_labelsets = active_sensors
 
     except Exception:
-        logger.exception('Failed to collect Ecobee metrics')
+        logger.exception('Failed to collect Ecobee metrics via beestat')
 
 
 # ---------------------------------------------------------------------------
@@ -539,26 +375,17 @@ def collect_metrics(api_key: str, config: dict[str, Any]) -> None:
 
 
 def run(config: dict[str, Any], port: int, interval: int, stop_event: threading.Event) -> None:
-    """Run the Ecobee exporter main loop."""
+    """Run the Ecobee/beestat exporter main loop."""
     start_http_server(port)
     logger.info('Prometheus metrics available at http://0.0.0.0:%d/metrics', port)
 
     api_key: str = config.get('api_key', '')
     if not api_key:
-        logger.error('api_key is required in the Ecobee config')
+        logger.error('api_key (beestat API key) is required in the Ecobee config')
         sys.exit(1)
 
-    # If no refresh token is present, run the interactive PIN authorization flow
-    if not config.get('refresh_token', ''):
-        logger.info('No refresh token found; starting Ecobee PIN authorization flow...')
-        if not _do_pin_flow(api_key, config, stop_event):
-            if not stop_event.is_set():
-                logger.error('Ecobee PIN authorization failed. Exiting.')
-                sys.exit(1)
-            return
-
     while not stop_event.is_set():
-        collect_metrics(api_key, config)
+        collect_metrics(api_key)
         stop_event.wait(timeout=float(interval))
 
     logger.info('Ecobeeprom stopped.')
@@ -568,10 +395,7 @@ def load_config(path: str) -> dict[str, Any]:
     """Load and return the JSON configuration file."""
     try:
         with open(path) as fh:
-            config: dict[str, Any] = json.load(fh)
-        # Store path so run() can save the refresh_token back to disk
-        config['_config_path'] = path
-        return config
+            return json.load(fh)  # type: ignore[no-any-return]
     except (OSError, json.JSONDecodeError) as exc:
         logger.error('Failed to load config file %s: %s', path, exc)
         sys.exit(1)

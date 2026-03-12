@@ -1,6 +1,5 @@
 {
     "port": 8083,
     "updateIntervalSecs": 180,
-    "api_key": "your-ecobee-api-key",
-    "refresh_token": ""
+    "api_key": "your-beestat-api-key"
 }

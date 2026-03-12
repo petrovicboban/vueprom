@@ -40,13 +40,14 @@ This project is not affiliated with *Emporia Energy*, *Govee*, *Airthings*, or *
 - Uses the OAuth2 client-credentials flow (client ID + secret → bearer token)
 
 ### Ecobee exporter (`--exporter ecobee`)
-- Auto-discovers all registered Ecobee thermostats via the Ecobee API
+- Reads all Ecobee thermostats via the **[beestat API](https://beestat.io)** (a third-party proxy
+  service that holds its own Ecobee developer credentials — no Ecobee developer account needed)
 - Exports indoor temperature, humidity, heat/cool setpoints, HVAC mode, equipment running status,
   outdoor temperature and humidity (from Ecobee's weather forecast), and per-sensor remote sensor
   readings (temperature, humidity, occupancy)
 - Labels thermostat metrics with `thermostat` (identifier) and `thermostat_name`
 - Labels sensor metrics with `thermostat`, `thermostat_name`, `sensor` (id), and `sensor_name`
-- Uses the Ecobee PIN OAuth2 flow; the refresh token is saved to the config file automatically
+- Uses a static beestat API key — no OAuth flow, no token rotation
 
 ### Common
 - Configurable scrape port and collection interval
@@ -63,7 +64,7 @@ This project is not affiliated with *Emporia Energy*, *Govee*, *Airthings*, or *
 - Emporia Vue account (email + password) for the Vue exporter
 - [Govee API key](https://developer.govee.com/reference/apply-you-govee-api-key) for the Govee exporter
 - [Airthings API client credentials](https://dashboard.airthings.com/integrations/api-integration) for the Airthings exporter
-- [Ecobee developer API key](https://www.ecobee.com/home/developer/api/introduction/index.shtml) for the Ecobee exporter
+- [Beestat API key](https://beestat.io) for the Ecobee exporter (sign in at beestat.io with your Ecobee account, then request an API key)
 
 ---
 
@@ -144,7 +145,7 @@ Create an API client at: https://dashboard.airthings.com/integrations/api-integr
 
 ### 4. Configure the Ecobee exporter
 
-Copy the sample config and fill in your Ecobee API key:
+Copy the sample config and fill in your beestat API key:
 
 ```bash
 cp ecobee.json.sample ecobee.json
@@ -156,30 +157,23 @@ Edit `ecobee.json`:
 {
     "port": 8083,
     "updateIntervalSecs": 180,
-    "api_key": "your-ecobee-api-key",
-    "refresh_token": ""
+    "api_key": "your-beestat-api-key"
 }
 ```
 
-**How to get an Ecobee API key:**
+**How to get a beestat API key** (no Ecobee developer account needed):
 
-1. Log in to [developer.ecobee.com](https://www.ecobee.com/home/developer/api/introduction/index.shtml)
-2. Navigate to the **Developer** section and create a new application
-3. Copy the **API Key** (also called Application Key) into `api_key`
+1. Go to [beestat.io](https://beestat.io) and sign in with your Ecobee account.
+   Beestat handles the Ecobee authentication on your behalf using its own registered
+   Ecobee developer credentials.
+2. Request an API key by contacting the beestat author through the app or via the
+   [beestat GitHub project](https://github.com/beestat/app).
+3. Paste the API key into `ecobee.json`.
 
-**First-run PIN authorization** (required once):
+> **Important:** Keep `ecobee.json` private – it contains your beestat API key.
 
-Leave `refresh_token` empty. On first start, the exporter will:
-1. Request a PIN from Ecobee and print it to the log
-2. Print step-by-step instructions to authorize it at ecobee.com
-3. Poll until you complete authorization (the PIN is valid for 9 minutes)
-4. Save the resulting `refresh_token` to `ecobee.json` automatically
-
-On every subsequent start the stored `refresh_token` is used; no manual steps required.
-
-> **Important:** Keep `ecobee.json` private – it contains your Ecobee credentials.
-> The config file must be **writable** so the exporter can save the refresh token;
-> do not mount it read-only (`:ro`) in Docker.
+> **Note on data freshness:** Beestat syncs Ecobee data approximately every 3 minutes.
+> Setting `updateIntervalSecs` below 180 will not yield fresher data.
 
 ### 5. Set the Grafana admin password
 
@@ -337,14 +331,13 @@ mypy promexporters/
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `port` | No | `8083` | HTTP port for the `/metrics` endpoint |
-| `updateIntervalSecs` | No | `180` | How often to poll the Ecobee API |
+| `updateIntervalSecs` | No | `180` | How often to poll the beestat API (minimum useful value: 180 s) |
 | `debug` | No | `false` | Set to `true` to enable debug logging |
-| `api_key` | Yes | – | Ecobee application API key |
-| `refresh_token` | No | `""` | OAuth2 refresh token (written automatically after PIN auth) |
+| `api_key` | Yes | – | beestat API key |
 
-> Thermostats are auto-discovered. Create an API key at https://www.ecobee.com/home/developer/api/introduction/index.shtml.
-> Leave `refresh_token` empty on first run; the exporter will guide you through PIN authorization
-> and save the token to `ecobee.json` automatically.
+> Thermostats are auto-discovered. Obtain a beestat API key by signing in at https://beestat.io
+> with your Ecobee account and requesting a key via the beestat app or GitHub project.
+> No Ecobee developer account is required.
 
 ---
 
@@ -525,15 +518,21 @@ Check the latest tags at [hub.docker.com/r/prom/prometheus/tags](https://hub.doc
 ```
 Emporia Vue Cloud API    Govee Cloud API      Airthings Cloud API     Ecobee Cloud API
         │                      │                      │                      │
-        │  (pyemvue,           │  (requests,          │  (requests + OAuth2, │  (requests + OAuth2,
-        │   every N secs)      │   every N secs)      │   every N secs)      │   every N secs)
+        │  (pyemvue,           │  (requests,          │  (requests + OAuth2, │  (synced by
+        │   every N secs)      │   every N secs)      │   every N secs)      │   beestat every ~3 min)
         ▼                      ▼                      ▼                      ▼
-  promexporters          promexporters          promexporters          promexporters
-  --exporter vue         --exporter govee       --exporter airthings   --exporter ecobee
-  (vueprom)              (goveeprom)            (airthingsprom)        (ecobeeprom)
-        │                      │                      │                      │
-        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics
-        ▼                      ▼                      ▼                      ▼
+  promexporters          promexporters          promexporters           beestat API
+  --exporter vue         --exporter govee       --exporter airthings  (api.beestat.io)
+  (vueprom)              (goveeprom)            (airthingsprom)              │
+        │                      │                      │           (requests + API key,
+        │  HTTP /metrics        │  HTTP /metrics        │  HTTP /metrics   every N secs)
+        │                      │                      │                    ▼
+        │                      │                      │           promexporters
+        │                      │                      │           --exporter ecobee
+        │                      │                      │           (ecobeeprom)
+        │                      │                      │                │
+        │                      │                      │                │  HTTP /metrics
+        ▼                      ▼                      ▼                ▼
                     Prometheus  ──────────────────▶  Grafana
 ```
 
