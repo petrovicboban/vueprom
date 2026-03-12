@@ -13,6 +13,7 @@ env/
 vueprom.json
 govee.json
 airthings.json
+ecobee.json
 
 # Grafana/Prometheus runtime data
 grafana_data/

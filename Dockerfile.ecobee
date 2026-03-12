@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+LABEL org.opencontainers.image.title="Ecobeeprom" \
+      org.opencontainers.image.description="Ecobee thermostat Prometheus exporter" \
+      org.opencontainers.image.source="https://github.com/petrovicboban/vueprom"
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY promexporters/ promexporters/
+RUN pip install --no-cache-dir .
+
+EXPOSE 8083
+
+ENTRYPOINT ["promexporters", "--exporter", "ecobee"]
+CMD ["ecobee.json"]

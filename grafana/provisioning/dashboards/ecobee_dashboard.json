@@ -1,0 +1,322 @@
+{
+  "id": null,
+  "uid": "ecobeeprom-thermostats",
+  "title": "Ecobee Thermostats",
+  "tags": ["ecobeeprom", "ecobee", "thermostat", "hvac"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "3m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "thermostat_name",
+        "label": "Thermostat",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(ecobee_thermostat_info, thermostat_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Indoor Temperature (°F)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_temperature_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{thermostat_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Indoor Humidity (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_humidity_percent{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{thermostat_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Heat & Cool Setpoints (°F)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_heat_setpoint_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "Heat – {{thermostat_name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "ecobee_cool_setpoint_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "Cool – {{thermostat_name}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Outdoor Temperature (°F)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_outdoor_temperature_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "Outdoor – {{thermostat_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Outdoor Humidity (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_outdoor_humidity_percent{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "Outdoor – {{thermostat_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Remote Sensor Temperatures (°F)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "ecobee_sensor_temperature_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{sensor_name}} ({{thermostat_name}})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Current Indoor Temperature (°F)",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "ecobee_temperature_fahrenheit{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{thermostat_name}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "min": 50,
+          "max": 90,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 65 },
+              { "color": "yellow", "value": 75 },
+              { "color": "red", "value": 82 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Current HVAC Mode",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "expr": "ecobee_hvac_mode{thermostat_name=~\"$thermostat_name\"} == 1",
+          "legendFormat": "{{thermostat_name}} – {{mode}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Active", "color": "green" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Equipment Running",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "expr": "ecobee_equipment_running{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{equipment}} ({{thermostat_name}})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Idle" }, "1": { "text": "Running" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Remote Sensor Occupancy",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "expr": "ecobee_sensor_occupancy{thermostat_name=~\"$thermostat_name\"}",
+          "legendFormat": "{{sensor_name}} ({{thermostat_name}})",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Unoccupied", "color": "blue" },
+                "1": { "text": "Occupied", "color": "green" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "9.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ]
+}
