@@ -302,7 +302,7 @@ def collect_metrics(api_key: str) -> None:
                     if cap_type == 'temperature':
                         try:
                             raw_temp = float(cap_value)
-                            if int(raw_temp) != _ECOBEE_TEMP_UNAVAILABLE:
+                            if raw_temp != _ECOBEE_TEMP_UNAVAILABLE:
                                 ecobee_sensor_temperature_fahrenheit.labels(**s_labels).set(
                                     raw_temp / 10.0
                                 )

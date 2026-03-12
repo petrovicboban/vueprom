@@ -133,9 +133,7 @@ def collect_metrics(api_key: str) -> None:
             try:
                 state = get_device_state(api_key, sku, device_id)
             except Exception:
-                logger.exception(
-                    'Failed to fetch state for device %s (%s)', device_id, device_name
-                )
+                logger.exception('Failed to fetch state for device %s (%s)', device_id, device_name)
                 continue
 
             # Detect whether the device is reporting temperature in Celsius.
